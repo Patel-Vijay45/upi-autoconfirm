@@ -87,6 +87,20 @@ describe('invites and login', () => {
 	});
 });
 
+describe('operator API', () => {
+	it('throttles wrong operator tokens per IP (10 per 15 min)', async () => {
+		const ip = { 'cf-connecting-ip': '203.0.113.9' };
+		for (let k = 0; k < 10; k++) {
+			const r = await call('POST', '/admin/v1/merchants', { key: 'not-the-operator-token', body: { name: 'x' }, headers: ip });
+			expect(r.status).toBe(401);
+		}
+		// Locked for this IP, even with the right token.
+		expect((await call('POST', '/admin/v1/merchants', { key: ADMIN, body: { name: 'x' }, headers: ip })).status).toBe(429);
+		// Other IPs are not affected.
+		expect((await call('POST', '/admin/v1/merchants', { key: ADMIN, body: { name: 'x' }, headers: { 'cf-connecting-ip': '198.51.100.7' } })).status).toBe(201);
+	});
+});
+
 describe('roles', () => {
 	it('staff handle payments; only owners/admins manage the shop', async () => {
 		const { keys, device, locationId } = await setup();

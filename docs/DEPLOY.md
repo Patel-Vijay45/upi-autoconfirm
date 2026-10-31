@@ -56,13 +56,17 @@ On the first run, the deploy script ([tools/deploy/deploy.mjs](../tools/deploy/d
 - Generates the three encryption keys (`DEVICE_KEY`, `WEBHOOK_KEY`, `MFA_KEY`) and stores them only in Cloudflare. They are never shown and never replaced, because replacing them would make stored phone, webhook and login secrets unreadable.
 
 ### 6. Your first shop
-```bash
-AUTOCONFIRM_ADMIN_TOKEN='<operator token>' node tools/admin.mjs create-merchant \
-  --api https://autoconfirm-api.<subdomain>.workers.dev --name "My Shop" --owner you@example.com
-```
-- It prints the shop's API keys once. Put them in your project's server secrets.
-- It also prints the owner's **setup link**. Open it, set a password and scan the QR with an authenticator app (Google Authenticator, Microsoft Authenticator, …).
-- Then, in the dashboard: **Counters & phones → Add counter → Add phone**, and pair the counter phone.
+From a phone or computer browser:
+1. Open `https://autoconfirm-dashboard.<subdomain>.workers.dev/operator` (staging: `autoconfirm-dashboard-staging…`).
+2. Enter your operator token, a shop name and the owner's email, then tap **Create shop**.
+   - The token is used for that one request and never stored.
+   - Wrong tokens are throttled: 10 per 15 minutes per address.
+3. The page shows:
+   - the shop's **API keys**, once (put the secret keys in your project's server secrets; new keys can also be made later in the dashboard under Developers);
+   - the owner's **setup link** (one-time, 72 hours). Open it on the owner's phone, set a password and scan the QR with an authenticator app (Google Authenticator, Microsoft Authenticator, …).
+4. In the dashboard: **Counters & phones → Add counter → Add phone**, and pair the counter phone.
+
+From a computer you can do the same with `node tools/admin.mjs create-merchant --api <API URL> --name "My Shop" --owner you@example.com` (needs `AUTOCONFIRM_ADMIN_TOKEN`).
 
 ## Check a deploy without Cloudflare
 ```bash
