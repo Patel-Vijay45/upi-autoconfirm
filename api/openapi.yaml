@@ -1,0 +1,314 @@
+openapi: 3.1.0
+info:
+  title: UPI AutoConfirm API
+  version: 1.0.0
+  description: |
+    Zero-fee UPI payments with automatic confirmation. Money goes straight to the merchant's own UPI ID;
+    this API creates uniquely-identifiable payment requests and reports when they are paid.
+    All amounts are integer paise (INR). See docs/API.md for the human-readable guide.
+servers:
+  - url: https://api.example.com/v1
+    description: Production (replace with your domain)
+security:
+  - secretKey: []
+
+components:
+  securitySchemes:
+    secretKey:
+      type: http
+      scheme: bearer
+      description: Secret key `sk_live_…` / `sk_test_…`. Server-to-server only.
+    publishableKey:
+      type: http
+      scheme: bearer
+      description: Publishable key `pk_live_…`. Browser-safe, read-only status.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 64 }
+      description: Same key within 24 h returns the same result. Always send on POST.
+    IntentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^pi_[a-z0-9]{10,}$' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [type, code, message]
+          properties:
+            type: { type: string, enum: [invalid_request, authentication, permission, not_found, conflict, rate_limit, api_error] }
+            code: { type: string, examples: [amount_too_small, slots_exhausted, location_not_ready, idempotency_mismatch] }
+            message: { type: string }
+            param: { type: string }
+    UpiLinks:
+      type: object
+      properties:
+        uri: { type: string, description: Generic upi://pay link (any UPI app) }
+        apps:
+          type: object
+          properties:
+            gpay: { type: string }
+            phonepe: { type: string }
+            paytm: { type: string }
+        qr_svg: { type: string, description: QR code of the generic link, as SVG markup }
+    Match:
+      type: object
+      nullable: true
+      properties:
+        source: { type: string, enum: [auto, manual] }
+        signal_id: { type: string }
+        app: { type: string, examples: [phonepe_business, paytm_business, gpay_business, bharatpe, bank_sms] }
+        late: { type: boolean }
+        amount_mismatch: { type: boolean }
+        received_amount: { type: integer, description: Amount actually received (paise) }
+    PaymentIntent:
+      type: object
+      required: [id, object, status, amount, unique_amount, display_amount, currency, expires_at, checkout_url, upi]
+      properties:
+        id: { type: string, examples: [pi_7h3k2m9q4x] }
+        object: { type: string, const: payment_intent }
+        status: { type: string, enum: [pending, paid, expired, cancelled] }
+        amount: { type: integer, minimum: 100, description: Requested amount in paise }
+        unique_amount: { type: integer, description: Amount the customer must pay (amount + paise offset) }
+        display_amount: { type: string, examples: ['930.07'] }
+        currency: { type: string, const: INR }
+        location_id: { type: string }
+        order_id: { type: string, maxLength: 64 }
+        description: { type: string, maxLength: 140 }
+        customer:
+          type: object
+          properties:
+            name: { type: string, maxLength: 80 }
+            phone: { type: string, maxLength: 20 }
+        expires_at: { type: string, format: date-time }
+        paid_at: { type: [string, 'null'], format: date-time }
+        customer_claimed_at: { type: [string, 'null'], format: date-time }
+        checkout_url: { type: string, format: uri }
+        return_url: { type: string, format: uri }
+        upi: { $ref: '#/components/schemas/UpiLinks' }
+        match: { $ref: '#/components/schemas/Match' }
+        metadata: { type: object, additionalProperties: { type: string }, maxProperties: 20 }
+        created: { type: string, format: date-time }
+        livemode: { type: boolean }
+    PublicStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [pending, paid, expired, cancelled] }
+        display_amount: { type: string }
+        expires_at: { type: string, format: date-time }
+        paid_at: { type: [string, 'null'], format: date-time }
+    Signal:
+      type: object
+      properties:
+        id: { type: string, examples: [sig_3k9…] }
+        status: { type: string, enum: [matched, unmatched, ambiguous, ignored, duplicate] }
+        location_id: { type: string }
+        device_id: { type: string }
+        app: { type: string }
+        amount: { type: integer }
+        payer_name: { type: [string, 'null'] }
+        reference: { type: [string, 'null'], description: UTR / UPI ref if the notification showed it }
+        posted_at: { type: string, format: date-time }
+        received_at: { type: string, format: date-time }
+        payment_intent: { type: [string, 'null'] }
+        suggestions:
+          type: array
+          description: Closest pending intents (by amount and time) for one-tap manual assignment
+          items: { type: string }
+    WebhookEndpoint:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string, format: uri }
+        events: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        secret: { type: string, description: Returned only on creation }
+    Event:
+      type: object
+      required: [id, type, created, data]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [payment_intent.paid, payment_intent.expired, payment_intent.cancelled, payment_intent.unpaid,
+                 signal.unmatched, device.offline, device.online, device.parse_failed]
+        created: { type: string, format: date-time }
+        livemode: { type: boolean }
+        data:
+          type: object
+          properties:
+            object: { description: The PaymentIntent, Signal or Device the event is about }
+
+paths:
+  /payment_intents:
+    post:
+      summary: Create a payment intent
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, minimum: 100, maximum: 10000000 }
+                location_id: { type: string }
+                order_id: { type: string, maxLength: 64 }
+                description: { type: string, maxLength: 140 }
+                customer:
+                  type: object
+                  properties:
+                    name: { type: string, maxLength: 80 }
+                    phone: { type: string, maxLength: 20 }
+                expires_in: { type: integer, minimum: 120, maximum: 3600, default: 900 }
+                return_url: { type: string, format: uri }
+                metadata: { type: object, additionalProperties: { type: string } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+        '400': { description: Invalid, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: slots_exhausted / idempotency_mismatch, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { description: location_not_ready, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    get:
+      summary: List payment intents
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, expired, cancelled] } }
+        - { name: location_id, in: query, schema: { type: string } }
+        - { name: created_after, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: starting_after, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/PaymentIntent' } }
+                  has_more: { type: boolean }
+  /payment_intents/{id}:
+    get:
+      summary: Retrieve a payment intent (always re-check here before fulfilling)
+      parameters: [{ $ref: '#/components/parameters/IntentId' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /payment_intents/{id}/cancel:
+    post:
+      summary: Cancel (releases the unique amount)
+      parameters: [{ $ref: '#/components/parameters/IntentId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+        '409': { description: Already paid, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /payment_intents/{id}/mark_paid:
+    post:
+      summary: Mark paid manually (audited)
+      parameters: [{ $ref: '#/components/parameters/IntentId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 200 }
+                signal_id: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+  /payment_intents/{id}/unmark_paid:
+    post:
+      summary: Undo a paid status within 24 h (audited)
+      parameters: [{ $ref: '#/components/parameters/IntentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 200 } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+  /signals:
+    get:
+      summary: List signals (the unmatched inbox)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [matched, unmatched, ambiguous, ignored, duplicate] } }
+        - { name: location_id, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Signal' } } } } } }
+  /signals/{id}/assign:
+    post:
+      summary: Manually match a signal to an intent
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [payment_intent], properties: { payment_intent: { type: string } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+  /signals/{id}/ignore:
+    post:
+      summary: Mark a signal as not related to any online order
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string, maxLength: 200 } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Signal' } } } }
+  /webhook_endpoints:
+    post:
+      summary: Add a webhook endpoint (secret returned once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                events: { type: array, items: { type: string } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/WebhookEndpoint' } } } }
+    get:
+      summary: List webhook endpoints
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/WebhookEndpoint' } } } } } } }
+  /public/payment_intents/{id}/status:
+    get:
+      summary: Public status (browser, publishable key). No personal data.
+      security: [{ publishableKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IntentId' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PublicStatus' } } } }
+  /public/payment_intents/{id}/claim:
+    post:
+      summary: Customer says "I have paid" (shown to staff; never marks paid)
+      security: [{ publishableKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IntentId' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PublicStatus' } } } }
+
+webhooks:
+  event:
+    post:
+      summary: Event delivered to your endpoint
+      description: |
+        Header `AutoConfirm-Signature: t=<unix>,v1=<hex hmac>` where
+        hmac = HMAC_SHA256(endpoint_secret, t + "." + raw_body). Reject if invalid or |now - t| > 300 s.
+        Respond 2xx within 10 s. Deduplicate by event id.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Event' }
+      responses:
+        '200': { description: Acknowledged }

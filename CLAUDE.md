@@ -1,0 +1,59 @@
+# CLAUDE.md
+
+Notes for Claude Code sessions working on this repository.
+
+## Project
+**UPI AutoConfirm** confirms UPI payments to a merchant's own UPI ID automatically, with no payment gateway and no % fee.
+- Each payment gets a unique paise amount (₹930.07).
+- An Android app on the merchant's phone forwards "money received" notifications.
+- The server matches them and fires signed webhooks to the merchant's website.
+
+Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MATCHING.md](docs/MATCHING.md) before changing anything.
+
+## Stack
+- **Server:**
+  - Cloudflare Workers + Hono, written in TypeScript.
+  - Durable Object `MerchantDO`, one per `merchant:location`. It does matching and live updates.
+  - D1 is the source of truth. Queues deliver webhooks, KV holds parser rules, Cron runs the jobs.
+- **Android app:** Kotlin, NotificationListenerService, Room, WorkManager, OkHttp, Keystore.
+- **Dashboard:** SvelteKit on Cloudflare.
+- **Contracts:** API in [api/openapi.yaml](api/openapi.yaml), schema in [db/schema.sql](db/schema.sql).
+
+## Rules that matter
+- **We never touch money.** No holding funds, no refunds, no payouts (see docs/COMPLIANCE.md).
+  - Market it as "UPI payment confirmation", not a "payment gateway".
+- **Money is integer paise everywhere.** Never use floats.
+- **Matching safety:**
+  - A signal marks an intent paid only when **exactly one** open intent at that location has that exact amount.
+  - Otherwise it is `unmatched` or `ambiguous`, for a human to resolve.
+  - Never guess.
+- **Invariants (keep the property tests green):**
+  - An intent is paid at most once.
+  - A signal links to at most one intent.
+  - Open intents at a location never share an amount.
+- **Idempotency:** every create call takes `Idempotency-Key`; webhooks carry a stable `event.id`; signals are de-duplicated by fingerprint.
+- **Signatures:** webhooks use `AutoConfirm-Signature: t=,v1=` (HMAC-SHA256, ±300 s). Device requests are HMAC-signed with a nonce.
+- **Tenancy:** every query is filtered by `merchant_id` (and `location_id`). A test must cover each new endpoint for cross-tenant access.
+- **Secrets:**
+  - Never log keys, secrets, full payer names or raw notification text.
+  - Store key hashes only. Show the full key once, at creation.
+- **Android:**
+  - Never request SMS or Accessibility permissions. Send only parsed fields plus a text hash.
+  - Parser rules come from the server (KV), so a format change needs no app release.
+- **Performance:**
+  - p95 signal → paid < 3 s.
+  - `checkout.js` under 15 KB gzipped. The hosted checkout page has no framework and no heavy libraries.
+- **Cost:** stay inside Cloudflare free/cheap tiers. Ask before adding paid services.
+- **Migrations:** additive only. Add new numbered files and never edit applied ones.
+
+## Working style
+- The owner often works from the Claude mobile app, so keep replies short and readable on a phone.
+- Commit and push before finishing; cloud containers are temporary.
+- Work on a feature branch, not directly on the default branch.
+
+## Commands (once the code exists)
+- Install: `npm install`
+- Dev: `npm run dev` (wrangler dev)
+- Tests: `npx vitest --run` (unit + property), `npx playwright test` (e2e)
+- Device simulator: `node tools/device-sim.mjs --location loc_test --amount 1.03 --app gpay`
+- Deploy: GitHub Actions → staging → manual approval → production
