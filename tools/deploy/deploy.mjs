@@ -42,11 +42,21 @@ const step = (msg) => console.log(`\n▶ ${msg}`);
 
 /** Cloudflare REST API (only for listing/creating resources). Never prints the token. */
 async function cf(path, init = {}) {
-	const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}${path}`, {
-		...init,
-		headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
-	});
-	const json = await res.json().catch(() => ({}));
+	let res;
+	let json;
+	// Cloudflare sometimes rate-limits (HTTP 429 / code 971); wait as asked and try again.
+	for (let attempt = 1; ; attempt++) {
+		res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}${path}`, {
+			...init,
+			headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
+		});
+		json = await res.json().catch(() => ({}));
+		const throttled = res.status === 429 || (json.errors ?? []).some((e) => e.code === 971);
+		if (!throttled || attempt >= 8) break;
+		const wait = Math.min(Number(res.headers.get('retry-after')) || 10, 60);
+		console.log(`  Cloudflare asked us to slow down; retrying in ${wait}s`);
+		await new Promise((r) => setTimeout(r, wait * 1000));
+	}
 	if (!res.ok || json.success === false) {
 		const errs = (json.errors ?? []).map((e) => `${e.code}: ${e.message}`).join('; ');
 		throw new Error(`Cloudflare API ${init.method ?? 'GET'} ${path.split('?')[0]} failed (${res.status}) ${errs}`);
