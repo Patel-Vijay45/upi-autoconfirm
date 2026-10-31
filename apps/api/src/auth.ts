@@ -5,11 +5,61 @@ import { ApiError, unauthorized } from './errors.ts';
 import { getDevice, type DeviceRow } from './db.ts';
 import { settingsFromJson } from './settings.ts';
 
+/** 'key' = a secret/publishable API key; the others are dashboard users. */
+export type Role = 'key' | 'owner' | 'admin' | 'staff' | 'developer';
+
 export interface MerchantAuth {
 	merchantId: string;
 	livemode: boolean;
 	keyPrefix: string;
 	settings: Settings;
+	role: Role;
+	/** Set for dashboard sessions. */
+	userId: string | null;
+}
+
+/** 403 unless the caller has one of these roles. API keys pass only if 'key' is listed. */
+export function requireRole(auth: MerchantAuth, ...roles: Role[]): void {
+	if (!roles.includes(auth.role)) throw new ApiError(403, 'permission', 'forbidden', 'your role is not allowed to do this');
+}
+
+export const SESSION_RE = /^Bearer\s+(ses_[0-9A-Za-z]{40,64})$/;
+const SESSION_TOUCH_MS = 5 * 60_000;
+
+/**
+ * A dashboard session (Authorization: Bearer ses_…). The dashboard picks test or live data with the
+ * AutoConfirm-Mode header ("live" or "test", default test).
+ */
+export async function authSession(env: Env, authorization: string, mode: string | undefined): Promise<MerchantAuth> {
+	const m = SESSION_RE.exec(authorization);
+	if (!m) throw unauthorized();
+	const now = Date.now();
+	const row = await env.DB.prepare(
+		`SELECT s.token_hash, s.user_id, s.merchant_id, s.last_seen_at, u.role, u.active, m.status, m.settings
+		 FROM sessions s JOIN users u ON u.id = s.user_id JOIN merchants m ON m.id = s.merchant_id
+		 WHERE s.token_hash = ? AND s.expires_at > ? AND u.merchant_id = s.merchant_id`,
+	)
+		.bind(await sha256Hex(m[1]!), now)
+		.first<{ token_hash: string; user_id: string; merchant_id: string; last_seen_at: number; role: Role; active: number; status: string; settings: string }>();
+	if (!row || row.active !== 1 || row.status !== 'active') throw unauthorized('session expired, please log in again');
+	if (now - row.last_seen_at > SESSION_TOUCH_MS) {
+		await env.DB.prepare('UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?').bind(now, row.token_hash).run();
+	}
+	return {
+		merchantId: row.merchant_id,
+		livemode: mode === 'live',
+		keyPrefix: `user:${row.user_id}`,
+		settings: settingsFromJson(row.settings),
+		role: row.role,
+		userId: row.user_id,
+	};
+}
+
+/** Secret key or dashboard session. */
+export async function authMerchant<E extends { Bindings: Env }>(c: Context<E>): Promise<MerchantAuth> {
+	const header = c.req.header('authorization') ?? '';
+	if (SESSION_RE.test(header)) return authSession(c.env, header, c.req.header('autoconfirm-mode'));
+	return authKeyValue(c.env, header, 'secret');
 }
 
 const KEY_RE = /^Bearer\s+((sk|pk)_(live|test)_[0-9A-Za-z]{20,64})$/;
@@ -33,7 +83,7 @@ export async function authKeyValue(env: Env, authorization: string, kind: 'secre
 		.bind(hash, kind, Date.now())
 		.first<{ merchant_id: string; livemode: number; prefix: string; status: string; settings: string }>();
 	if (!row || row.status !== 'active') throw unauthorized();
-	return { merchantId: row.merchant_id, livemode: row.livemode === 1, keyPrefix: row.prefix, settings: settingsFromJson(row.settings) };
+	return { merchantId: row.merchant_id, livemode: row.livemode === 1, keyPrefix: row.prefix, settings: settingsFromJson(row.settings), role: 'key', userId: null };
 }
 
 export interface DeviceAuth {

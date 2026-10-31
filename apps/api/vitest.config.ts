@@ -18,6 +18,8 @@ export default defineConfig(async () => {
 						DEVICE_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
 						WEBHOOK_KEY: 'HxwdGhsYGRYXFBUSExAREg8ODQwLCgkIBwYFBAMCAQA=',
 						ADMIN_TOKEN: 'test-admin-token-0123456789abcdef0123',
+						MFA_KEY: 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=',
+						DASHBOARD_URL: 'https://dash.example.com',
 					},
 				},
 			}),

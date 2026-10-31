@@ -5,3 +5,4 @@ export * from './signatures.ts';
 export * from './upi.ts';
 export * from './engine.ts';
 export * from './qr.ts';
+export * from './totp.ts';

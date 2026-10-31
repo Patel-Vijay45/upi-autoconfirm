@@ -2,10 +2,10 @@
 // Tenancy: every D1 query filters by merchant_id (and livemode); location objects are keyed by tenant.
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import { encryptSecret, randomId, randomSecret, sha256Hex, timingSafeEqual, type Intent } from '@autoconfirm/core';
+import { encryptSecret, formatPaise, randomId, randomSecret, sha256Hex, timingSafeEqual, type Intent } from '@autoconfirm/core';
 import type { Env } from './env.ts';
 import { ApiError, fromEngine, notFound, unauthorized } from './errors.ts';
-import { authDevice, authKey, readBody, type MerchantAuth } from './auth.ts';
+import { authDevice, authKey, authMerchant, readBody, requireRole, type MerchantAuth } from './auth.ts';
 import {
 	getIntent,
 	getLocation,
@@ -21,6 +21,7 @@ import { iso, presentIntent, presentPublicStatus, presentSignal, rowFromEngine }
 import { locationObjectName, type Actor, type LocationCtx, type Result } from './location-do.ts';
 import { settingsFromJson } from './settings.ts';
 import { registerCheckout } from './checkout.ts';
+import { registerDashboard } from './dashboard.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
 type Ctx = Context<AppEnv>;
@@ -69,7 +70,8 @@ function lctx(auth: Pick<MerchantAuth, 'merchantId' | 'livemode' | 'settings'>, 
 }
 
 function actor(c: Ctx): Actor {
-	return { by: `key:${c.get('auth').keyPrefix}`, ip: c.req.header('cf-connecting-ip') ?? null };
+	const auth = c.get('auth');
+	return { by: auth.userId ? `user:${auth.userId}` : `key:${auth.keyPrefix}`, ip: c.req.header('cf-connecting-ip') ?? null };
 }
 
 /** Apply the engine's latest view on top of a D1 row (D1 is written by the outbox and may briefly lag). */
@@ -266,13 +268,17 @@ registerCheckout(app);
 // Merchant (secret key) routes: everything under /v1 except /v1/public.
 app.use('/v1/*', async (c, next) => {
 	if (c.req.path.startsWith('/v1/public/') || c.req.path === '/v1/checkout.js') return next();
-	c.set('auth', await authKey(c, 'secret'));
+	c.set('auth', await authMerchant(c));
 	return next();
 });
+
+// Dashboard endpoints (logins, team, keys, phones, webhook logs, reports, settings).
+registerDashboard(app);
 
 // ----- locations -----
 
 app.post('/v1/locations', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), CreateLocation);
 	const id = randomId('loc');
@@ -291,6 +297,7 @@ app.get('/v1/locations', async (c) => {
 });
 
 app.post('/v1/locations/:id/pairing_codes', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin');
 	const auth = c.get('auth');
 	const loc = await loadLocation(c, c.req.param('id'));
 	const code = `pc_${randomSecret(24)}`;
@@ -332,7 +339,8 @@ app.post('/v1/payment_intents', async (c) => {
 		loc = await loadLocation(c, body.location_id);
 	} else {
 		const active = (await listLocations(c.env.DB, auth.merchantId)).filter((l) => l.active === 1);
-		if (active.length !== 1) throw new ApiError(400, 'invalid_request', 'location_required', 'location_id is required when the merchant has more than one location', 'location_id');
+		if (active.length === 0) throw new ApiError(422, 'invalid_request', 'location_not_ready', 'no active location; add or resume one first', 'location_id');
+		if (active.length > 1) throw new ApiError(400, 'invalid_request', 'location_required', 'location_id is required when the merchant has more than one location', 'location_id');
 		loc = active[0]!;
 	}
 	if (loc.active !== 1) throw new ApiError(422, 'invalid_request', 'location_not_ready', 'location is not active', 'location_id');
@@ -413,6 +421,7 @@ app.get('/v1/payment_intents', async (c) => {
 app.get('/v1/payment_intents/:id', async (c) => c.json(await intentResponse(c, await loadIntent(c, c.req.param('id')))));
 
 app.post('/v1/payment_intents/:id/cancel', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'staff');
 	const auth = c.get('auth');
 	const row = await loadIntent(c, c.req.param('id'));
 	const i = unwrap(await locationStub(c.env, auth.merchantId, row.location_id, auth.livemode).cancel(lctx(auth, row.location_id), row.id, actor(c)));
@@ -420,6 +429,7 @@ app.post('/v1/payment_intents/:id/cancel', async (c) => {
 });
 
 app.post('/v1/payment_intents/:id/mark_paid', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'staff');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), Note);
 	const row = await loadIntent(c, c.req.param('id'));
@@ -434,6 +444,7 @@ app.post('/v1/payment_intents/:id/mark_paid', async (c) => {
 });
 
 app.post('/v1/payment_intents/:id/unmark_paid', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'staff');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), Unmark);
 	const row = await loadIntent(c, c.req.param('id'));
@@ -465,9 +476,27 @@ app.get('/v1/signals', async (c) => {
 	return c.json({ object: 'list', data: rows.results.slice(0, q.data.limit).map(presentSignal), has_more: rows.results.length > q.data.limit });
 });
 
-app.get('/v1/signals/:id', async (c) => c.json(presentSignal(await loadSignal(c, c.req.param('id')))));
+app.get('/v1/signals/:id', async (c) => {
+	const auth = c.get('auth');
+	const sig = await loadSignal(c, c.req.param('id'));
+	// For inbox signals: the closest open (or recently expired) intents at the same location, for one-tap assignment.
+	let suggestions: unknown[] = [];
+	if (sig.status === 'unmatched' || sig.status === 'ambiguous' || sig.status === 'review') {
+		const rows = await c.env.DB.prepare(
+			`SELECT id, order_id, status, amount, unique_amount, created_at FROM payment_intents
+			 WHERE merchant_id = ? AND location_id = ? AND livemode = ? AND status IN ('pending', 'expired')
+			   AND created_at BETWEEN ? AND ?
+			 ORDER BY ABS(unique_amount - ?), ABS(created_at - ?) LIMIT 5`,
+		)
+			.bind(auth.merchantId, sig.location_id, auth.livemode ? 1 : 0, sig.received_at - 24 * 3600_000, sig.received_at + 60_000, sig.amount, sig.received_at)
+			.all<{ id: string; order_id: string | null; status: string; amount: number; unique_amount: number; created_at: number }>();
+		suggestions = rows.results.map((r) => ({ id: r.id, order_id: r.order_id, status: r.status, amount: r.amount, unique_amount: r.unique_amount, display_amount: formatPaise(r.unique_amount), created: iso(r.created_at) }));
+	}
+	return c.json({ ...presentSignal(sig), suggestions });
+});
 
 app.post('/v1/signals/:id/assign', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'staff');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), Assign);
 	const sig = await loadSignal(c, c.req.param('id'));
@@ -479,6 +508,7 @@ app.post('/v1/signals/:id/assign', async (c) => {
 
 for (const action of ['reject', 'ignore'] as const) {
 	app.post(`/v1/signals/:id/${action}`, async (c) => {
+		requireRole(c.get('auth'), 'key', 'owner', 'admin', 'staff');
 		const auth = c.get('auth');
 		const body = parseJson(await readBody(c), Reason);
 		const sig = await loadSignal(c, c.req.param('id'));
@@ -492,6 +522,7 @@ for (const action of ['reject', 'ignore'] as const) {
 // ----- webhook endpoints -----
 
 app.post('/v1/webhook_endpoints', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'developer');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), CreateEndpoint);
 	const id = randomId('we');
@@ -504,6 +535,7 @@ app.post('/v1/webhook_endpoints', async (c) => {
 });
 
 app.get('/v1/webhook_endpoints', async (c) => {
+	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'developer');
 	const auth = c.get('auth');
 	const rows = await c.env.DB.prepare('SELECT id, url, events, enabled, created_at FROM webhook_endpoints WHERE merchant_id = ? AND livemode = ? ORDER BY created_at')
 		.bind(auth.merchantId, auth.livemode ? 1 : 0)

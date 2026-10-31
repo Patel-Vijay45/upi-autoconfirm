@@ -1,6 +1,6 @@
 -- UPI AutoConfirm: system-of-record schema (Cloudflare D1 / SQLite).
 -- This file is the full current schema. Applied changes live in db/migrations (additive only):
--- 0001_initial.sql is this file as first released.
+-- 0001_initial.sql is this file as first released; later numbered files add to it (and are appended below).
 -- Money: integer paise. Times: unix milliseconds. Every tenant-owned row has merchant_id.
 -- The live matching state (active intents, reserved amounts, recent fingerprints) also lives inside
 -- each location's Durable Object; D1 is the durable record and the source for dashboards/reports.
@@ -35,7 +35,7 @@ CREATE TABLE users (                         -- dashboard logins
 	email TEXT NOT NULL UNIQUE COLLATE NOCASE,
 	password_hash TEXT,                        -- or passwordless / OAuth
 	role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'staff', 'developer')),
-	mfa_secret TEXT,                           -- TOTP, required for owner/admin
+	mfa_secret TEXT,                           -- TOTP secret, AES-GCM encrypted (MFA_KEY); required for owner/admin
 	active INTEGER NOT NULL DEFAULT 1,
 	created_at INTEGER NOT NULL,
 	last_login INTEGER
@@ -229,4 +229,38 @@ CREATE TABLE idempotency (
 	response TEXT NOT NULL,
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (merchant_id, key)
+);
+
+-- ===== Added by 0002_dashboard.sql =====
+-- Last TOTP time-step used per user, so a code can't be replayed.
+ALTER TABLE users ADD COLUMN mfa_last_step INTEGER;
+
+-- Login sessions for the dashboard. Only a hash of the token is stored.
+CREATE TABLE sessions (
+	token_hash TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL REFERENCES users(id),
+	merchant_id TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	last_seen_at INTEGER NOT NULL,
+	ip TEXT
+);
+CREATE INDEX sessions_user ON sessions(user_id);
+CREATE INDEX sessions_expiry ON sessions(expires_at);
+
+-- One-time setup links for new users (set a password, enrol an authenticator app).
+CREATE TABLE user_invites (
+	token_hash TEXT PRIMARY KEY,
+	merchant_id TEXT NOT NULL,
+	user_id TEXT NOT NULL REFERENCES users(id),
+	mfa_secret_enc TEXT NOT NULL,             -- TOTP secret offered on the setup page, AES-GCM encrypted
+	expires_at INTEGER NOT NULL,
+	used_at INTEGER
+);
+
+-- Failed-login counters (per email and per IP), for throttling.
+CREATE TABLE login_throttle (
+	key TEXT PRIMARY KEY,
+	failures INTEGER NOT NULL,
+	window_start INTEGER NOT NULL
 );

@@ -9,6 +9,10 @@ export interface Env {
 	DEVICE_KEY: string;
 	/** base64, 32 bytes: encrypts webhook endpoint secrets at rest. */
 	WEBHOOK_KEY: string;
+	/** base64, 32 bytes: encrypts dashboard users' TOTP secrets at rest. */
+	MFA_KEY: string;
+	/** Dashboard base URL, used to build setup links for invited users (optional). */
+	DASHBOARD_URL?: string;
 	/** Operator token for /admin/v1 (creating merchants). Unset = admin API disabled. */
 	ADMIN_TOKEN?: string;
 	CHECKOUT_BASE_URL: string;
