@@ -28,7 +28,9 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 ## 2a. Locations and phones
 - `POST /v1/locations` with `{"name": "Counter 1", "upi_vpa": "shop@ybl", "upi_payee_name": "My Shop"}`. Each location is one UPI ID with its own phone(s).
 - `GET /v1/locations`
-- `POST /v1/locations/:id/pairing_codes` returns `{code, expires_at}` (valid 10 min, single use). Show it as a QR; the app sends it to `/device/v1/enroll`. The phone gets the key's mode (test or live).
+- `POST /v1/locations/:id/pairing_codes` returns `{code, pairing_link, expires_at}` (valid 10 min, single use).
+  - Show `pairing_link` (`autoconfirm://pair?api=…&code=pc_…`) as a QR. The phone's camera opens the app, which sends the code to `/device/v1/enroll`.
+  - The phone gets the key's mode (test or live). Set `PUBLIC_API_URL` if the API is reached through a different address than the request came in on.
 - A location needs at least one paired phone before it can take payments (`422 location_not_ready`).
 
 ## 3. Payment intents

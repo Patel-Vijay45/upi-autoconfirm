@@ -59,13 +59,15 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
 - `packages/core`: pure TypeScript (engine, money, signatures, UPI links). No platform code. Most safety logic lives here.
 - `apps/api`: Cloudflare Worker (Hono routes, `LocationDO`, webhook queue consumer).
 - `db/schema.sql` is the full schema; `db/migrations/` holds applied migrations (add new numbered files only).
-- `tools/device-sim.mjs`: signs and sends signals like the phone app.
+- `apps/android`: Kotlin phone app (Gradle project, not part of npm workspaces). Pure logic in `parse/` and `net/` is unit-tested on the JVM.
+- `tools/device-sim.mjs`: signs and sends signals like the phone app. `tools/rules/example.json`: parser-rules template.
 
 ## Commands
 - Install: `npm install`
 - Dev: `npm run dev` (wrangler dev; needs `apps/api/.dev.vars` and `npx wrangler d1 migrations apply autoconfirm --local` in `apps/api`)
 - Tests: `npm test` (core unit + property tests, then API tests in the Workers runtime). Typecheck: `npm run typecheck`
 - Device simulator: `node tools/device-sim.mjs pair --code pc_… --api http://localhost:8787`, then `node tools/device-sim.mjs signal --amount 930.07`
+- Android: `cd apps/android && ./gradlew testDebugUnitTest assembleDebug` (needs JDK 17+ and Android SDK 36)
 - Deploy: GitHub Actions → staging → manual approval → production
 
 ## Scope

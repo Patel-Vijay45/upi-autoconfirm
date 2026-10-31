@@ -25,7 +25,12 @@ AutoConfirm is a **standalone, reusable service**. Any number of projects (onlin
   - A cross-tenant test for each endpoint.
 - **`tools/device-sim.mjs`:** signs and sends signals exactly like the phone app.
 
-## Step 2: Android app
+## Step 2: Android app ✅ built (v0.1), needs real-phone testing
+Code in `apps/android` (see its README). Unit tests pass, and its network code was tested against the real API on `wrangler dev`. Still to do:
+- Upload of redacted parse failures (needs a server endpoint).
+- Hindi and regional-language strings.
+- The real-phone checks below.
+
 - Pairing QR.
 - Signed requests.
 - Offline queue.

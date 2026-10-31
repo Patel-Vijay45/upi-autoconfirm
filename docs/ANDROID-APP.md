@@ -18,10 +18,10 @@ The app's only job is to **notice "money received" notifications from the mercha
 | Background work | WorkManager (retry queue, 15-min periodic sync), plus an immediate send from the listener callback |
 | Secure storage | `device_secret` encrypted with Android Keystore (AES-GCM key, non-exportable) |
 | Config | Parser rules JSON pulled from `/device/v1/parser_rules` (ETag) on start and every 15 min |
-| Crash/health | Heartbeat to our API (no third-party SDKs, to keep data private) |
+| Crash/health | Heartbeat to our API every 5 min while the listener is connected, plus every 15 min from WorkManager (no third-party SDKs, to keep data private). A killed app stops heartbeating, so the server sees it as offline. |
 
 ## 3. Screens
-1. **Pair:** scan the QR shown in the merchant dashboard (Locations → Add phone). The QR holds a one-time pairing code valid for 10 min.
+1. **Pair:** scan the QR shown in the merchant dashboard (Locations → Add phone) with the phone's camera app. The QR holds an `autoconfirm://pair?api=…&code=pc_…` link with a one-time code valid for 10 min, and it opens the app. No camera permission or scanning library is needed. The link can also be pasted.
 2. **Setup checklist** (each item is a big green tick or a red "Fix" button):
    - Notification access is ON.
    - Battery optimisation is OFF for AutoConfirm (open the system setting).
@@ -56,7 +56,9 @@ package: com.phonepe.app.business   title: "Payment received"   text: "₹930.07
 ```
 - Package names and regexes **must be verified on real devices** before real use (ROADMAP Step 2). The example above is a template, not tested wording.
 - Rules can also match **bank SMS** shown as notifications by the SMS app (e.g. "Rs 930.07 credited to a/c XX1234 by VPA ramesh@okaxis"). This needs no SMS permission; we only read the notification.
-- **Order of checks:** if the package isn't in the rules, ignore it. If an `ignore` pattern matches, ignore it. Otherwise try the `incoming` patterns. If one matches, it's a signal. If nothing matches but the text contains ₹ or Rs, record a parse failure (redacted).
+- **Order of checks:** if the package isn't in the rules, ignore it. If an `ignore` pattern matches, ignore it. Otherwise try the `incoming` patterns. If one matches, it's a signal. If nothing matches but the text contains ₹ or Rs, record a parse failure.
+  - App v0.1 only counts parse failures and shows the count on the status screen. Uploading redacted samples (opt-in) needs the `/device/v1/parse_failures` endpoint, which isn't built yet.
+- Pattern fields: `field` is `title`, `text`, `big_text` or `any` (all three joined). `amount`, `payer` and `reference` are regex group numbers. A pattern that fails to compile is skipped, so it can't break the others.
 - The amount is parsed as an exact decimal to paise: strip commas and **never use floating point**. "930.7" means 93070 paise.
 
 ### 4.3 What leaves the phone

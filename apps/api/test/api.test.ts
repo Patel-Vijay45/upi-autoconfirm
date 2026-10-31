@@ -219,6 +219,7 @@ describe('device security', () => {
 		const keys = await newMerchant();
 		const loc = await newLocation(keys.sk);
 		const pc = await call('POST', `/v1/locations/${loc}/pairing_codes`, { key: keys.sk });
+		expect(pc.json.pairing_link).toBe(`autoconfirm://pair?api=${encodeURIComponent('http://localhost')}&code=${pc.json.code}`);
 		expect((await call('POST', '/device/v1/enroll', { body: { pairing_code: pc.json.code } })).status).toBe(201);
 		expect((await call('POST', '/device/v1/enroll', { body: { pairing_code: pc.json.code } })).status).toBe(401);
 		expect((await call('POST', '/device/v1/enroll', { body: { pairing_code: 'pc_doesnotexist000' } })).status).toBe(401);

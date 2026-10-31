@@ -294,7 +294,10 @@ app.post('/v1/locations/:id/pairing_codes', async (c) => {
 	await c.env.DB.prepare('INSERT INTO pairing_codes (code_hash, merchant_id, location_id, livemode, expires_at) VALUES (?, ?, ?, ?, ?)')
 		.bind(await sha256Hex(code), auth.merchantId, loc.id, auth.livemode ? 1 : 0, expiresAt)
 		.run();
-	return c.json({ object: 'pairing_code', code, location_id: loc.id, livemode: auth.livemode, expires_at: iso(expiresAt) }, 201);
+	// The phone app opens this link (QR scanned with the camera). The API base is where the phone sends signals.
+	const apiBase = (c.env.PUBLIC_API_URL || new URL(c.req.url).origin).replace(/\/$/, '');
+	const pairingLink = `autoconfirm://pair?api=${encodeURIComponent(apiBase)}&code=${code}`;
+	return c.json({ object: 'pairing_code', code, pairing_link: pairingLink, location_id: loc.id, livemode: auth.livemode, expires_at: iso(expiresAt) }, 201);
 });
 
 // ----- payment intents -----

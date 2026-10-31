@@ -12,6 +12,8 @@ export interface Env {
 	/** Operator token for /admin/v1 (creating merchants). Unset = admin API disabled. */
 	ADMIN_TOKEN?: string;
 	CHECKOUT_BASE_URL: string;
+	/** Public base URL of this API, put in pairing links. Defaults to the request origin. */
+	PUBLIC_API_URL?: string;
 }
 
 /** Without endpointId the consumer fans out to each subscribed endpoint. */
