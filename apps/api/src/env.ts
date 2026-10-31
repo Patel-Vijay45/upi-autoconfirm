@@ -1,8 +1,10 @@
 import type { LocationDO } from './location-do.ts';
+import type { PasswordDO } from './password-do.ts';
 
 export interface Env {
 	DB: D1Database;
 	LOCATION: DurableObjectNamespace<LocationDO>;
+	PASSWORDS: DurableObjectNamespace<PasswordDO>;
 	WEBHOOKS: Queue<WebhookMessage>;
 	RULES: KVNamespace;
 	/** base64, 32 bytes: encrypts device secrets at rest. */

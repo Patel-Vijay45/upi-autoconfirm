@@ -20,7 +20,8 @@ import type { Env } from './env.ts';
 import { ApiError, notFound, unauthorized } from './errors.ts';
 import { authSession, readBody, requireRole, SESSION_RE, type MerchantAuth, type Role } from './auth.ts';
 import { getLocation, insertAuditStmt } from './db.ts';
-import { hashPassword, PASSWORD_MIN, verifyPassword } from './passwords.ts';
+import { PASSWORD_MIN } from './passwords.ts';
+import { passwordHasher } from './password-do.ts';
 import { iso } from './present.ts';
 import { settingsFromJson } from './settings.ts';
 
@@ -204,7 +205,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		)
 			.bind(body.email)
 			.first<{ id: string; merchant_id: string; email: string; role: Role; password_hash: string | null; mfa_secret: string | null; mfa_last_step: number | null; merchant_name: string }>();
-		const passwordOk = await verifyPassword(body.password, user?.password_hash);
+		const passwordOk = await passwordHasher(c.env).verify(body.password, user?.password_hash);
 		if (!user || !passwordOk) {
 			await recordFailure(c.env, keys.map((k) => k.key), now);
 			throw new ApiError(401, 'authentication', 'invalid_login', 'wrong email or password');
@@ -263,7 +264,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		const used = await c.env.DB.prepare('UPDATE user_invites SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?').bind(now, inv.token_hash, now).run();
 		if (used.meta.changes !== 1) throw notFound('invite');
 		await c.env.DB.prepare('UPDATE users SET password_hash = ?, mfa_secret = ?, mfa_last_step = ?, active = 1 WHERE id = ? AND merchant_id = ?')
-			.bind(await hashPassword(body.password), step !== null ? inv.mfa_secret_enc : null, step, inv.user_id, inv.merchant_id)
+			.bind(await passwordHasher(c.env).hash(body.password), step !== null ? inv.mfa_secret_enc : null, step, inv.user_id, inv.merchant_id)
 			.run();
 		const session = await createSession(c.env, inv.user_id, inv.merchant_id, c);
 		return c.json({ ...session, user: { id: inv.user_id, email: inv.email, role: inv.role }, merchant: { id: inv.merchant_id, name: inv.merchant_name } }, 201);

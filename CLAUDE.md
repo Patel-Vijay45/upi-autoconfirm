@@ -48,6 +48,7 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
   - p95 signal → paid < 3 s.
   - `checkout.js` under 15 KB gzipped. The hosted checkout page has no framework and no heavy libraries.
 - **Cost:** stay inside Cloudflare free/cheap tiers. Ask before adding paid services.
+  - It runs on the Workers Free plan: 10 ms CPU per request, so heavy CPU work (e.g. password hashing) goes in a Durable Object, which gets 30 s.
 - **Migrations:** additive only. Add new numbered files and never edit applied ones.
 
 ## Working style
@@ -74,7 +75,8 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
 - Browser e2e: start the API (`wrangler dev`) and the dashboard, then `npm run test:e2e` (Playwright Chromium). Dashboard e2e uses E2E_DASH (default http://127.0.0.1:5173).
 - Device simulator: `node tools/device-sim.mjs pair --code pc_… --api http://localhost:8787`, then `node tools/device-sim.mjs signal --amount 930.07`
 - Android: `cd apps/android && ./gradlew testDebugUnitTest assembleDebug` (needs JDK 17+ and Android SDK 36)
-- Deploy: GitHub Actions → staging → manual approval → production
+- Deploy: see docs/DEPLOY.md. Push to `main` deploys staging; "Run workflow" deploys staging then production (`tools/deploy/deploy.mjs`). Dry run: `node tools/deploy/deploy.mjs --env production --dry-run`
+- Operator: `node tools/admin.mjs create-merchant --api <url> --name … --owner <email>` (needs AUTOCONFIRM_ADMIN_TOKEN)
 
 ## Scope
 - This is a generic, reusable service. Never add project-specific code, names or special cases. Every project is just a merchant using the public API (see docs/USE-CASES.md).

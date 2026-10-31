@@ -8,9 +8,16 @@
     { "binding": "DB", "database_name": "autoconfirm", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "../../db/migrations" }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "LOCATION", "class_name": "LocationDO" }]
+    "bindings": [
+      { "name": "LOCATION", "class_name": "LocationDO" },
+      { "name": "PASSWORDS", "class_name": "PasswordDO" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LocationDO"] }],
+  // SQLite-backed Durable Objects (the only kind on the Workers Free plan). Add new tags; never edit old ones.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["LocationDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["PasswordDO"] }
+  ],
   "queues": {
     "producers": [{ "binding": "WEBHOOKS", "queue": "autoconfirm-webhooks" }],
     "consumers": [{ "queue": "autoconfirm-webhooks", "max_batch_size": 10, "max_retries": 6 }]

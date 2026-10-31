@@ -93,6 +93,8 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 - Expire `pending` intents past `expires_at` + grace, and emit `payment_intent.expired`.
 
 ## 9. Deployment configuration
+Step-by-step setup: [DEPLOY.md](DEPLOY.md). `tools/deploy/deploy.mjs` creates the resources and secrets below automatically.
+
 Two Workers: `autoconfirm-api` (apps/api) and `autoconfirm-dashboard` (apps/dashboard).
 
 **API secrets** (`wrangler secret put`): each of the first three is 32 random bytes in base64 (`openssl rand -base64 32`).

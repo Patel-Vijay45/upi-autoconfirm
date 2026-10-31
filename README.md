@@ -62,6 +62,7 @@ To run the API and try it with the device simulator, see "Commands" in [CLAUDE.m
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, signing, keys, fraud cases, privacy |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Targets, limits, scaling, cost, load tests |
 | [docs/COMPLIANCE.md](docs/COMPLIANCE.md) | RBI, NPCI, DPDP Act, Play Store, UPI-app terms (**get a lawyer**) |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Deploy to Cloudflare (free plan) with GitHub Actions, step by step |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Monitoring, alerts, runbooks, backups, support |
 | [docs/TESTING.md](docs/TESTING.md) | Test plan and go-live checklists |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Build steps from core service to product |
