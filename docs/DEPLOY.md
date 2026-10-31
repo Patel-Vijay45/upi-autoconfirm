@@ -16,8 +16,10 @@ Deploys run from GitHub Actions ([.github/workflows/deploy.yml](../.github/workf
 
 ### 1. Cloudflare account
 1. Sign up at **dash.cloudflare.com/sign-up** with the email you want to use, and verify the email.
-2. Open **Workers & Pages** once. It asks you to pick a free `workers.dev` subdomain (e.g. `myshops`). Your URLs will be `https://autoconfirm-api.myshops.workers.dev` and so on.
-3. Copy your **Account ID**. It's in the right-hand column of the Workers & Pages overview (or in the URL: `dash.cloudflare.com/<account-id>/…`).
+2. You don't need to create any application.
+   - If "Workers & Pages" asks you to create one, you can ignore it. The first deploy creates your free `workers.dev` address itself (a random `autoconfirm-xxxxxx`, or set the GitHub variable `WORKERS_SUBDOMAIN` to choose a name).
+   - Your URLs will look like `https://autoconfirm-api.<subdomain>.workers.dev`.
+3. Copy your **Account ID**. It's the 32-character code in the browser address after you log in: `dash.cloudflare.com/<account-id>/…`. It's also under **Account home → ⋯ (next to your account) → Copy account ID**.
 
 ### 2. API token for GitHub
 1. Click the profile icon (top right), then **My Profile → API Tokens → Create Token**.

@@ -5,7 +5,7 @@
 //   node tools/deploy/deploy.mjs --env production --dry-run     (no Cloudflare calls; checks the build)
 //
 // Optional env: AUTOCONFIRM_ADMIN_TOKEN (operator token, ≥ 32 chars), API_PUBLIC_URL / DASHBOARD_PUBLIC_URL
-// (custom domains; default *.workers.dev).
+// (custom domains; default *.workers.dev), WORKERS_SUBDOMAIN (name for a new account's workers.dev subdomain).
 //
 // Safe to run again and again: it creates missing resources, never deletes, and never replaces existing
 // encryption keys (that would make stored phone/webhook/MFA secrets unreadable).
@@ -80,14 +80,22 @@ async function ensureQueue() {
 	await cf('/queues', { method: 'POST', body: JSON.stringify({ queue_name: NAMES.queue }) });
 }
 
+/** The account's workers.dev subdomain. New accounts have none yet, so we create one (WORKERS_SUBDOMAIN or a random name). */
 async function workersSubdomain() {
 	try {
 		const sub = (await cf('/workers/subdomain')).result?.subdomain;
 		if (sub) return sub;
 	} catch {
-		/* fall through */
+		/* none yet */
 	}
-	die('No workers.dev subdomain yet. In the Cloudflare dashboard open "Workers & Pages" once and choose one, then run again.');
+	const wanted = (process.env.WORKERS_SUBDOMAIN || `autoconfirm-${randomBytes(3).toString('hex')}`).toLowerCase();
+	if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(wanted)) die(`WORKERS_SUBDOMAIN "${wanted}" is not a valid name (letters, digits, dashes)`);
+	console.log(`  creating workers.dev subdomain ${wanted}`);
+	try {
+		return (await cf('/workers/subdomain', { method: 'PUT', body: JSON.stringify({ subdomain: wanted }) })).result.subdomain;
+	} catch (e) {
+		die(`Could not create the workers.dev subdomain (${e.message}). Open "Workers & Pages" in the Cloudflare dashboard, create any Hello World application once, then run again.`);
+	}
 }
 
 /** wrangler.jsonc -> object: drops line and block comments outside strings, and trailing commas. */

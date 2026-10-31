@@ -43,6 +43,7 @@ jobs:
           AUTOCONFIRM_ADMIN_TOKEN: ${{ secrets.AUTOCONFIRM_ADMIN_TOKEN }}
           API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
           DASHBOARD_PUBLIC_URL: ${{ vars.DASHBOARD_PUBLIC_URL }}
+          WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
 
   production:
     needs: staging
@@ -65,3 +66,4 @@ jobs:
           AUTOCONFIRM_ADMIN_TOKEN: ${{ secrets.AUTOCONFIRM_ADMIN_TOKEN }}
           API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
           DASHBOARD_PUBLIC_URL: ${{ vars.DASHBOARD_PUBLIC_URL }}
+          WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
