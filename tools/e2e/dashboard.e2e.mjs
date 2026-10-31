@@ -67,9 +67,6 @@ async function signal(device, amountPaise) {
 async function main() {
 	const n = Date.now().toString(36);
 	const ownerEmail = `owner-${n}@shop.example`;
-	const m = await api('POST', '/admin/v1/merchants', { key: ADMIN, body: { name: 'Sharma General Store' } });
-	const sk = m.secret_key_test;
-	const inv = await api('POST', `/admin/v1/merchants/${m.merchant.id}/invites`, { key: ADMIN, body: { email: ownerEmail, role: 'owner' } });
 
 	const browser = await chromium.launch();
 	const errors = [];
@@ -82,7 +79,25 @@ async function main() {
 	watch(p);
 
 	// ----- owner setup: password + authenticator -----
-	const res = await p.goto(`${DASH}/setup/${inv.token}`);
+	// ----- operator page: create the shop and get the owner's setup link -----
+	await p.goto(`${DASH}/operator`);
+	const createForm = p.locator('form[action="?/createShop"]');
+	await createForm.locator('input[name=token]').fill('wrong-operator-token');
+	await createForm.locator('input[name=name]').fill('Sharma General Store');
+	await createForm.locator('input[name=email]').fill(ownerEmail);
+	await createForm.getByRole('button', { name: 'Create shop' }).click();
+	await p.getByText('Wrong operator token.').waitFor();
+	ok(true, 'operator: wrong token refused');
+	await createForm.locator('input[name=token]').fill(ADMIN);
+	await createForm.getByRole('button', { name: 'Create shop' }).click();
+	await p.getByTestId('setup-url').waitFor();
+	const setupUrl = (await p.getByTestId('setup-url').textContent()).trim();
+	const sk = (await p.getByTestId('sk-test').textContent()).trim();
+	ok(setupUrl.startsWith(`${DASH}/setup/inv_`) && sk.startsWith('sk_test_'), 'operator: shop created, setup link + keys shown');
+	ok(!(await p.content()).includes(ADMIN), 'operator: token not echoed back');
+	if (SHOTS) await p.screenshot({ path: `${SHOTS}/d0-operator.png`, fullPage: true });
+
+	const res = await p.goto(setupUrl);
 	ok(/script-src/.test(res.headers()['content-security-policy'] ?? ''), 'pages send a Content-Security-Policy');
 	ok(await p.getByText('Sharma General Store').isVisible(), 'setup: shows the shop');
 	ok(await p.locator('.qr svg').isVisible(), 'setup: authenticator QR shown');

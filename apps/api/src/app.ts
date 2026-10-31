@@ -21,7 +21,7 @@ import { iso, presentIntent, presentPublicStatus, presentSignal, rowFromEngine }
 import { locationObjectName, type Actor, type LocationCtx, type Result } from './location-do.ts';
 import { settingsFromJson } from './settings.ts';
 import { registerCheckout } from './checkout.ts';
-import { registerDashboard } from './dashboard.ts';
+import { registerDashboard, requireOperator } from './dashboard.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
 type Ctx = Context<AppEnv>;
@@ -655,10 +655,7 @@ app.get('/device/v1/parser_rules', async (c) => {
 // ---------- operator API (creating merchants until the dashboard exists) ----------
 
 app.post('/admin/v1/merchants', async (c) => {
-	const token = c.env.ADMIN_TOKEN;
-	const given = /^Bearer\s+(.+)$/.exec(c.req.header('authorization') ?? '')?.[1] ?? '';
-	if (!token || token.length < 32) throw notFound('route');
-	if (!timingSafeEqual(given, token)) throw unauthorized();
+	await requireOperator(c);
 	const body = parseJson(await readBody(c), CreateMerchant);
 	const id = randomId('mer');
 	const now = Date.now();

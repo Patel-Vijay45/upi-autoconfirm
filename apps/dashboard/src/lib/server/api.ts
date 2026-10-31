@@ -24,7 +24,8 @@ export async function apiRaw(event: RequestEvent, method: string, path: string, 
 	} catch {
 		/* not available in some environments */
 	}
-	if (event.locals.session) headers.set('authorization', `Bearer ${event.locals.session}`);
+	// An explicit Authorization (e.g. the operator token) wins over the signed-in user's session.
+	if (event.locals.session && !headers.has('authorization')) headers.set('authorization', `Bearer ${event.locals.session}`);
 	if (body !== undefined) headers.set('content-type', 'application/json');
 	const base = (event.platform?.env?.API_URL ?? env.API_URL ?? 'https://api.internal').replace(/\/$/, '');
 	const req = new Request(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });

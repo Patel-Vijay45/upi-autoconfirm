@@ -69,6 +69,23 @@ async function audit(env: Env, auth: MerchantAuth, c: Context, action: string, o
 	await insertAuditStmt(env.DB, { merchantId: auth.merchantId, actor: actorOf(auth), action, objectId, detail, ip: ip(c), at: Date.now() }).run();
 }
 
+/**
+ * Operator token check for /admin/v1 (Authorization: Bearer <ADMIN_TOKEN>). Unset or short token = 404.
+ * Failed attempts are throttled per IP (10 per 15 min), since the dashboard has a public operator page.
+ */
+export async function requireOperator<E extends { Bindings: Env }>(c: Context<E>): Promise<void> {
+	const token = c.env.ADMIN_TOKEN;
+	if (!token || token.length < 32) throw notFound('route');
+	const now = Date.now();
+	const key = `operator-ip:${c.req.header('cf-connecting-ip') ?? 'unknown'}`;
+	if (await throttled(c.env, [{ key, limit: 10 }], now)) throw new ApiError(429, 'rate_limit', 'too_many_attempts', 'too many wrong operator tokens; try again in 15 minutes');
+	const given = /^Bearer\s+(.+)$/.exec(c.req.header('authorization') ?? '')?.[1] ?? '';
+	if (!timingSafeEqual(given, token)) {
+		await recordFailure(c.env, [key], now);
+		throw unauthorized('wrong operator token');
+	}
+}
+
 async function createSession(env: Env, userId: string, merchantId: string, c: Context) {
 	const token = `ses_${randomSecret()}`;
 	const now = Date.now();
@@ -271,10 +288,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 	});
 
 	app.post('/admin/v1/merchants/:id/invites', async (c) => {
-		const token = c.env.ADMIN_TOKEN;
-		const given = /^Bearer\s+(.+)$/.exec(c.req.header('authorization') ?? '')?.[1] ?? '';
-		if (!token || token.length < 32) throw notFound('route');
-		if (!timingSafeEqual(given, token)) throw unauthorized();
+		await requireOperator(c);
 		const body = parse(await readBody(c), Invite);
 		const m = await c.env.DB.prepare('SELECT id FROM merchants WHERE id = ?').bind(c.req.param('id')).first();
 		if (!m) throw notFound('merchant');
