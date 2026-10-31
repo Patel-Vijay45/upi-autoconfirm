@@ -25,12 +25,16 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
 - **Money is integer paise everywhere.** Never use floats.
 - **Matching safety:**
   - A signal marks an intent paid only when **exactly one** open intent at that location has that exact amount.
+  - The payment must have been sent after the intent was created (`paid_time`, corrected for phone clock).
+  - Above `auto_confirm_max` the signal goes to `review` for one staff tap; the intent stays `pending`.
   - Otherwise it is `unmatched` or `ambiguous`, for a human to resolve.
   - Never guess.
+  - A unique amount stays reserved for `reuse_cooldown` after its intent closes. Offsets are picked at random.
 - **Invariants (keep the property tests green):**
   - An intent is paid at most once.
   - A signal links to at most one intent.
   - Open intents at a location never share an amount.
+  - A unique amount is not reused before the old intent's `reserved_until`.
 - **Idempotency:** every create call takes `Idempotency-Key`; webhooks carry a stable `event.id`; signals are de-duplicated by fingerprint.
 - **Signatures:** webhooks use `AutoConfirm-Signature: t=,v1=` (HMAC-SHA256, ±300 s). Device requests are HMAC-signed with a nonce.
 - **Tenancy:** every query is filtered by `merchant_id` (and `location_id`). A test must cover each new endpoint for cross-tenant access.

@@ -11,7 +11,8 @@ CREATE TABLE merchants (
 	name TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'closed')),
 	plan TEXT NOT NULL DEFAULT 'free',
-	settings TEXT NOT NULL DEFAULT '{}',      -- JSON: offset_mode, max_offset, intent_ttl, grace_window, limits
+	settings TEXT NOT NULL DEFAULT '{}',      -- JSON: offset_mode, max_offset, intent_ttl, grace_window, reuse_cooldown,
+	                                           --       auto_confirm_max (paise; null = no limit), limits (see MATCHING.md §1.1)
 	created_at INTEGER NOT NULL
 );
 
@@ -64,6 +65,7 @@ CREATE TABLE devices (
 	listener_enabled INTEGER NOT NULL DEFAULT 0,
 	battery_optimized INTEGER,                 -- 1 = OS may kill app (warn merchant)
 	last_heartbeat_at INTEGER,
+	clock_offset_ms INTEGER NOT NULL DEFAULT 0, -- server time − phone time, measured on each heartbeat (MATCHING §3)
 	last_signal_at INTEGER,
 	status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'online', 'offline', 'revoked')),
 	created_at INTEGER NOT NULL
@@ -105,12 +107,20 @@ CREATE TABLE payment_intents (
 	late INTEGER NOT NULL DEFAULT 0,
 	amount_mismatch INTEGER NOT NULL DEFAULT 0,
 	cancelled_at INTEGER,
+	reserved_until INTEGER,                    -- unique_amount stays reserved until this time (set when the intent closes;
+	                                           -- NULL while pending). Lets the DO rebuild its reserved set after a restart.
 	updated_at INTEGER NOT NULL,
 	UNIQUE (merchant_id, idempotency_key)
 );
 CREATE INDEX pi_merchant_created ON payment_intents(merchant_id, created_at);
 CREATE INDEX pi_location_status ON payment_intents(location_id, status, expires_at);
 CREATE INDEX pi_order ON payment_intents(merchant_id, order_id);
+CREATE INDEX pi_reserved ON payment_intents(location_id, reserved_until);
+-- Backstop for the invariant "open intents at a location never share an amount".
+-- (The DO also enforces the reuse cool-down, which this index can't express.)
+CREATE UNIQUE INDEX pi_open_amount ON payment_intents(location_id, unique_amount) WHERE status = 'pending';
+-- A signal pays at most one intent.
+CREATE UNIQUE INDEX pi_matched_signal ON payment_intents(matched_signal_id) WHERE matched_signal_id IS NOT NULL;
 
 -- What the phone saw. Raw notification text is NOT stored here (see parse_failures, opt-in, short retention).
 CREATE TABLE signals (
@@ -123,23 +133,29 @@ CREATE TABLE signals (
 	payer_name TEXT,                           -- truncated to first name + initial (data minimisation)
 	reference TEXT,                            -- UTR / UPI ref if present
 	posted_at INTEGER NOT NULL,                -- phone time
-	received_at INTEGER NOT NULL,              -- server time (used for windows)
+	paid_time INTEGER NOT NULL,                -- posted_at + device clock_offset, capped at received_at (MATCHING §3)
+	received_at INTEGER NOT NULL,              -- server time (used for grace windows)
 	fingerprint TEXT NOT NULL,
-	status TEXT NOT NULL CHECK (status IN ('matched', 'unmatched', 'ambiguous', 'ignored', 'duplicate')),
-	payment_intent_id TEXT,
+	status TEXT NOT NULL CHECK (status IN ('matched', 'unmatched', 'ambiguous', 'review', 'ignored', 'duplicate')),
+	payment_intent_id TEXT,                    -- matched intent, or the suggested intent while status = 'review'
+	duplicate_of TEXT,                         -- first signal of the same payment, when status = 'duplicate'
 	note TEXT,
 	UNIQUE (location_id, fingerprint)
 );
 CREATE INDEX signals_inbox ON signals(merchant_id, status, received_at);
+CREATE INDEX signals_dedupe ON signals(location_id, amount, paid_time);
 
 CREATE TABLE parse_failures (                -- only if merchant opted in; auto-deleted after 7 days
 	id INTEGER PRIMARY KEY,
+	merchant_id TEXT NOT NULL,
+	location_id TEXT NOT NULL,
 	device_id TEXT NOT NULL,
 	app TEXT NOT NULL,
 	redacted_text TEXT NOT NULL,               -- digits except the amount masked on device
 	rules_version TEXT NOT NULL,
 	received_at INTEGER NOT NULL
 );
+CREATE INDEX parse_failures_merchant ON parse_failures(merchant_id, received_at);
 
 -- Parser rules (also cached in KV; devices pull by version)
 CREATE TABLE parser_rules (
@@ -172,6 +188,7 @@ CREATE INDEX events_merchant ON events(merchant_id, created_at);
 
 CREATE TABLE webhook_deliveries (
 	id INTEGER PRIMARY KEY,
+	merchant_id TEXT NOT NULL,
 	event_id TEXT NOT NULL,
 	endpoint_id TEXT NOT NULL,
 	attempt INTEGER NOT NULL,
@@ -182,6 +199,7 @@ CREATE TABLE webhook_deliveries (
 	created_at INTEGER NOT NULL
 );
 CREATE INDEX deliveries_pending ON webhook_deliveries(status, next_attempt_at);
+CREATE INDEX deliveries_merchant ON webhook_deliveries(merchant_id, event_id);
 
 -- ---------- Audit (append-only) ----------
 CREATE TABLE audit_log (
@@ -205,3 +223,14 @@ CREATE TABLE idempotency (
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (merchant_id, key)
 );
+
+-- Device request nonces (API.md §8): a nonce is rejected if seen again within 10 min.
+-- Also kept in the DO; this copy survives DO restarts. Rows are deleted by the cleanup cron after expires_at.
+CREATE TABLE device_nonces (
+	device_id TEXT NOT NULL,
+	nonce TEXT NOT NULL,
+	merchant_id TEXT NOT NULL,
+	expires_at INTEGER NOT NULL,
+	PRIMARY KEY (device_id, nonce)
+);
+CREATE INDEX device_nonces_expiry ON device_nonces(expires_at);
