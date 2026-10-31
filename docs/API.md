@@ -79,7 +79,7 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 `GET /v1/payment_intents?status=pending&location_id=loc_a&created_after=…`
 
 ### Cancel
-`POST /v1/payment_intents/:id/cancel`. Releases the unique amount. Allowed only while `pending` or `expired`.
+`POST /v1/payment_intents/:id/cancel`. Allowed only while `pending` or `expired`. The unique amount is released after the reuse cool-down (MATCHING §1), not at once.
 
 ### Mark paid manually
 `POST /v1/payment_intents/:id/mark_paid` with `{"note": "Verified on soundbox", "signal_id": "sig_…"}` (`signal_id` is optional and links an unmatched signal).
@@ -91,9 +91,13 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 `POST /v1/public/payment_intents/:id/claim` (publishable key). It sets `customer_claimed_at`, which is shown to staff as "customer says paid". It never marks the intent paid.
 
 ## 4. Signals (what the phone saw)
-- `GET /v1/signals?status=unmatched`: the inbox.
+- `GET /v1/signals?status=unmatched`: the inbox. Also `status=review` (waiting for staff) and `status=ambiguous`.
 - `POST /v1/signals/:id/assign` with `{"payment_intent": "pi_…"}`: manual match. If amounts differ, `amount_mismatch` is set and both amounts are recorded.
+  - For a `review` signal this is the **Confirm** step. The suggested intent is in the signal's `payment_intent` field.
+- `POST /v1/signals/:id/reject` with `{"reason": "…"}`: for a `review` signal. It becomes `unmatched`, and the intent stays `pending`.
 - `POST /v1/signals/:id/ignore` with `{"reason": "walk-in customer"}`
+
+Signal statuses: `matched`, `unmatched`, `ambiguous`, `review` (above `auto_confirm_max`, waiting for staff), `ignored`, `duplicate`.
 
 ## 5. Live status (for your own checkout UI)
 - **WebSocket:** `wss://pay.<your-domain>/v1/public/payment_intents/:id/live?key=pk_live_…` sends `{"type":"status","status":"paid","paid_at":"…"}`.
@@ -112,6 +116,7 @@ Configure endpoints in the dashboard or with `POST /v1/webhook_endpoints {url, e
 | `payment_intent.cancelled` | Cancelled |
 | `payment_intent.unpaid` | Merchant undid a paid status |
 | `signal.unmatched` | Money arrived that matched nothing (or matched ambiguously) |
+| `signal.review_required` | Money matched an intent above `auto_confirm_max`; staff must confirm (MATCHING §5) |
 | `device.offline` / `device.online` | Phone heartbeat lost or restored |
 | `device.parse_failed` | Phone saw a payment notification it couldn't read |
 
@@ -171,7 +176,7 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
 |---|---|
 | `POST /device/v1/enroll` `{pairing_code, device_info}` | Pair the phone, which receives `device_id` and `device_secret` (once) |
 | `POST /device/v1/signals` | Batch of parsed notifications (signed) |
-| `POST /device/v1/heartbeat` | Every 5 min: listener status, app versions, queue size, battery-optimisation state |
+| `POST /device/v1/heartbeat` | Every 5 min: listener status, app versions, queue size, battery-optimisation state, phone clock (`device_time`). The server stores `clock_offset` from it. |
 | `GET /device/v1/parser_rules?version=` | Current parser rules (ETag-cached) |
 | `POST /device/v1/parse_failures` | Notification text that matched a payment app but couldn't be parsed. Redacted; only if the merchant opted in. |
 

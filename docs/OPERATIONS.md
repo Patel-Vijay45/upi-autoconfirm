@@ -30,6 +30,7 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 1. Dashboard → Location → **Signals**. Look for the amount around the payment time.
 2. **Signal is there as `unmatched`** (amount differs, e.g. the customer typed ₹930 instead of ₹930.07) → click **Assign to intent**.
 3. **Signal is there as `ambiguous`** → pick the right intent (ask for the last 4 digits of the UTR).
+   **Signal is there as `review`** (order above `auto_confirm_max`) → check the phone or soundbox, then tap **Confirm**.
 4. **No signal at all** → check the device heartbeat. If the phone was offline, staff verify on the phone/soundbox and use **Mark paid**.
 5. If it repeats, check parse failures for that UPI app (R3).
 
@@ -43,11 +44,11 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 1. Parse-failure alerts spike for one package (e.g. `com.phonepe.app.business`).
 2. Grab 3–5 redacted samples from `parse_failures`.
 3. Write a new rule version in `parser_rules` (KV), test it with the samples in the rule tester (`npm run rules:test`), and roll it out to 10 % of devices, then 100 %.
-4. Devices fetch rules every 6 h or on push. No app-store release is needed.
+4. Devices fetch rules every 15 min, on start, or on push. No app-store release is needed.
 5. Re-process the failed samples from the last 24 h.
 
 ### R4. Webhooks failing for a merchant
-- Retries: 1 m, 5 m, 30 m, 2 h, 6 h, 12 h, 24 h, then `failed`. Email the developer after 3 failures.
+- Retries: 10 s, 1 m, 5 m, 30 m, 2 h, 12 h, then `failed` (same as API.md §6). Email the developer after 3 failures.
 - They can **Replay** from Dashboard → Developers → Webhook log after fixing their endpoint.
 - Auto-disable an endpoint after 3 days of continuous failure (email first).
 

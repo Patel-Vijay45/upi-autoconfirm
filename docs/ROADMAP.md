@@ -13,6 +13,9 @@ Goal: prove the matching works at a real counter with real customers.
   - Time to confirm.
   - How often customers change the amount.
   - Phone-offline incidents.
+- **Verify on real phones:**
+  - The real notification wording and package names for each payment app (needed for parser rules).
+  - Whether Google Pay, PhonePe and Paytm accept the app-specific links (`gpay://`, `phonepe://`, `paytmmp://`) with `tr` set, for a small merchant's UPI ID and at typical order sizes. Some apps block or limit these. Fall back to plain `upi://pay` without `tr` if needed.
 - **Exit criteria:** match rate > 95 % and zero wrong confirmations over 300+ payments.
 
 ## Phase 1: Standalone service, single tenant (2–4 weeks)

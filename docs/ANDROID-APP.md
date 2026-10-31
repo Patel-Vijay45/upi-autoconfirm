@@ -69,7 +69,7 @@ package: com.phonepe.app.business   title: "Payment received"   text: "₹930.07
 |---|---|
 | The OS kills the app (Chinese OEM battery savers) | Setup checklist; detect `isIgnoringBatteryOptimizations`; heartbeat-missing alert to the merchant within 10 min |
 | Notification listener disconnects silently | `onListenerDisconnected` → `requestRebind`; the heartbeat reports `listener_connected`; the server alerts if false |
-| No internet | Room queue; retry with backoff; send on network-available callback; signals keep their original `posted_at` |
+| No internet | Room queue; retry with backoff; send on network-available callback; signals keep their original `posted_at`, which the server corrects for clock drift and uses so late signals can't pay newer orders |
 | Payment app's notifications turned off or silenced | The checklist checks the notification channel importance where possible; a test payment confirms it end-to-end |
 | Duplicate notifications (app updates the same notification) | Device-side dedupe by notification key + amount within 2 min; the server dedupes again (MATCHING §3) |
 | Phone restarted | `BOOT_COMPLETED` receiver re-schedules work; the listener is rebound by the system |

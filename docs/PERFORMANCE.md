@@ -61,6 +61,7 @@ Pricing suggestion: a flat **₹199–499 per location per month**. This beats a
 | 1 location: 200 intents with the **same base amount** at once | 99 get unique offsets, then the rest get a correct `409 slots_exhausted`, and no duplicates |
 | Signal storm: 100 signals/s to one location | Each matched exactly once; dedupe correct |
 | Duplicate signals (same notification sent 5×, 2 devices) | Exactly 1 match |
+| Pay, then a new intent for the same base amount, then the backup phone's copy arrives | New intent stays `pending`; the copy is `duplicate` or `unmatched` |
 | Webhook endpoint down for 1 h | All events delivered after recovery, in order per intent, no loss |
 | Durable Object eviction or restart mid-burst | No lost or duplicate matches (state persisted before ack) |
 | 24 h soak on a real phone (Xiaomi, Samsung, Vivo) | Heartbeat never missing > 10 min with the checklist done |

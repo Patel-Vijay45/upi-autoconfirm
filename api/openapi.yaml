@@ -108,7 +108,10 @@ components:
       type: object
       properties:
         id: { type: string, examples: [sig_3k9…] }
-        status: { type: string, enum: [matched, unmatched, ambiguous, ignored, duplicate] }
+        status:
+          type: string
+          enum: [matched, unmatched, ambiguous, review, ignored, duplicate]
+          description: '`review` = matched an intent above auto_confirm_max; waiting for staff to confirm or reject'
         location_id: { type: string }
         device_id: { type: string }
         app: { type: string }
@@ -117,7 +120,8 @@ components:
         reference: { type: [string, 'null'], description: UTR / UPI ref if the notification showed it }
         posted_at: { type: string, format: date-time }
         received_at: { type: string, format: date-time }
-        payment_intent: { type: [string, 'null'] }
+        payment_intent: { type: [string, 'null'], description: 'Matched intent, or the suggested intent while status is review' }
+        duplicate_of: { type: [string, 'null'], description: 'First signal of the same payment, when status is duplicate' }
         suggestions:
           type: array
           description: Closest pending intents (by amount and time) for one-tap manual assignment
@@ -138,7 +142,7 @@ components:
         type:
           type: string
           enum: [payment_intent.paid, payment_intent.expired, payment_intent.cancelled, payment_intent.unpaid,
-                 signal.unmatched, device.offline, device.online, device.parse_failed]
+                 signal.unmatched, signal.review_required, device.offline, device.online, device.parse_failed]
         created: { type: string, format: date-time }
         livemode: { type: boolean }
         data:
@@ -203,7 +207,7 @@ paths:
         '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /payment_intents/{id}/cancel:
     post:
-      summary: Cancel (releases the unique amount)
+      summary: Cancel (the unique amount is released after the reuse cool-down)
       parameters: [{ $ref: '#/components/parameters/IntentId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
@@ -237,7 +241,7 @@ paths:
     get:
       summary: List signals (the unmatched inbox)
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [matched, unmatched, ambiguous, ignored, duplicate] } }
+        - { name: status, in: query, schema: { type: string, enum: [matched, unmatched, ambiguous, review, ignored, duplicate] } }
         - { name: location_id, in: query, schema: { type: string } }
       responses:
         '200':
@@ -245,7 +249,7 @@ paths:
           content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Signal' } } } } } }
   /signals/{id}/assign:
     post:
-      summary: Manually match a signal to an intent
+      summary: Manually match a signal to an intent (also the Confirm step for a review signal)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       requestBody:
         required: true
@@ -254,6 +258,17 @@ paths:
             schema: { type: object, required: [payment_intent], properties: { payment_intent: { type: string } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+  /signals/{id}/reject:
+    post:
+      summary: Reject a review signal (it becomes unmatched; the intent stays pending)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string, maxLength: 200 } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Signal' } } } }
+        '409': { description: Signal is not in review, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /signals/{id}/ignore:
     post:
       summary: Mark a signal as not related to any online order

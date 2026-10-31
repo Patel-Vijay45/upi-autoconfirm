@@ -17,7 +17,7 @@
                 ┌────────────────────────── Cloudflare ──────────────────────────┐
  Merchant site ─┤ API Worker (Hono)  ── /v1/*  (secret key)                       │
  (server)       │      │                                                         │
-                │      ├──▶ MerchantDO (Durable Object, one per merchant)        │
+                │      ├──▶ MerchantDO (Durable Object, one per location)        │
  Customer ──────┤ Checkout Worker ── /p/:id, /v1/public/*  (publishable key)     │
  browser        │      │       ▲   live status (WebSocket/SSE)                   │
                 │      │       │                                                 │
@@ -45,16 +45,17 @@
 - Enroll a device with a pairing code, receive signals (payment notifications), heartbeats, and serve parser rules.
 - Auth: **per-device secret**, with every request signed by HMAC-SHA256, a timestamp and a nonce.
 
-### 2.4 MerchantDO: the matching engine (Durable Object, one per merchant)
-- Holds the merchant's **active intents** (pending, not expired) and the recent signal fingerprints, in its own SQLite storage.
-- **All matching for a merchant happens here, one at a time.** Durable Objects process one request at a time per object, so two signals can't grab the same intent and the same unique amount is never handed out twice.
+### 2.4 MerchantDO: the matching engine (Durable Object, one per location)
+- The object key is `merchant_id:location_id` (see §5).
+- Holds the location's **active intents**, the **reserved amounts** (open intents plus those in their reuse cool-down) and the recent signal fingerprints, in its own SQLite storage.
+- **All matching for a location happens here, one at a time.** Durable Objects process one request at a time per object, so two signals can't grab the same intent and the same unique amount is never handed out twice.
 - Pushes live updates over WebSocket (hibernation API) to the merchant dashboard and checkout pages.
 - Writes results to D1, which is the system of record, and enqueues webhooks.
 
 Why a Durable Object instead of only D1:
-- **Single-threaded per merchant.** Allocation and matching are race-free without database locks.
+- **Single-threaded per location.** Allocation and matching are race-free without database locks.
 - **In-memory hot set.** Matching is about 1 ms, with no extra database round trip.
-- **Horizontal scale for free.** Each merchant is independent, so millions of merchants means millions of tiny objects.
+- **Horizontal scale for free.** Each location is independent, so millions of locations means millions of tiny objects.
 
 ### 2.5 D1 (system of record)
 Merchants, users, keys, devices, payment intents, signals, matches, webhook deliveries and the audit log. See [`db/schema.sql`](../db/schema.sql).
@@ -84,7 +85,7 @@ SvelteKit on Workers with:
 |---|---|---|
 | Runtime | Cloudflare Workers (TypeScript) | Edge PoPs in India, scale to zero, no servers |
 | HTTP framework | Hono | Tiny, fast, Workers-native, typed routes |
-| Matching/state | Durable Objects (SQLite-backed, WebSocket hibernation) | Per-merchant serial execution, live push |
+| Matching/state | Durable Objects (SQLite-backed, WebSocket hibernation) | Per-location serial execution, live push |
 | Database | Cloudflare D1 | SQLite, cheap, point-in-time recovery (Time Travel) |
 | Async | Cloudflare Queues + Cron Triggers | Webhook retries, expiry sweeps |
 | Cache/config | Workers KV | Parser rules, feature flags |
@@ -95,7 +96,7 @@ SvelteKit on Workers with:
 | Tests | Vitest + Miniflare, Playwright, k6/autocannon, JUnit + Robolectric (Android) | |
 | CI/CD | GitHub Actions → `wrangler deploy` | Same as diwali-ecom |
 
-> **Alternative stack:** if Cloudflare isn't wanted, use Node.js (Fastify) + Postgres (row lock or advisory lock per merchant for matching) + Redis (pub/sub for live status) + BullMQ (webhooks) on any VPS. The design below doesn't depend on Cloudflare; only the "one actor per merchant" idea matters.
+> **Alternative stack:** if Cloudflare isn't wanted, use Node.js (Fastify) + Postgres (row lock or advisory lock per location for matching) + Redis (pub/sub for live status) + BullMQ (webhooks) on any VPS. The design below doesn't depend on Cloudflare; only the "one actor per location" idea matters.
 
 ## 4. Main flows
 
@@ -103,7 +104,7 @@ SvelteKit on Workers with:
 ```
 Merchant server → POST /v1/payment_intents {amount: 93000, order_id: "A-31-7"}
   API Worker → MerchantDO.allocate(93000)
-     → picks unique_amount 93007 (lowest free paise offset for this base amount)
+     → picks unique_amount 93007 (random free paise offset for this base amount; reserved amounts excluded)
      → stores intent (pending, expires_at = now + 15 min)
   ← {id: "pi_…", unique_amount: 93007, upi: {uri, apps:{gpay,phonepe,paytm}, qr_svg}, checkout_url}
 ```
@@ -118,8 +119,10 @@ AutoConfirm app: parse → {amount: 93007, app: "phonepe_business", payer: "Rame
   → POST /device/v1/signals (HMAC signed)
 Device Worker: verify signature/timestamp/nonce → MerchantDO.ingest(signal)
 MerchantDO:
-  dedupe (fingerprint) → find pending intents with unique_amount = 93007
-  exactly one → mark PAID, record match, free the offset
+  dedupe (fingerprint + cross-device window) → find open intents with unique_amount = 93007
+     created before the payment was sent (paid_time, corrected for phone clock)
+  exactly one → mark PAID, record match, keep the amount reserved for reuse_cooldown
+  exactly one but above auto_confirm_max → REVIEW (inbox, staff confirm in one tap)
   zero → store as UNMATCHED (inbox + webhook signal.unmatched)
   more than one → impossible by allocation; if it happens → AMBIGUOUS (inbox, never auto-match)
   → D1 write → Queue webhook payment_intent.paid → live push to checkout + dashboard
@@ -132,7 +135,7 @@ MerchantDO:
 
 ## 5. Multi-tenancy
 - Every row has a `merchant_id`. Every query is scoped by it, enforced in a single data-access layer and covered by tests.
-- MerchantDO id = `idFromName(merchant_id)`.
+- MerchantDO id = `idFromName(merchant_id + ":" + location_id)`.
 - Keys, devices and webhooks belong to exactly one merchant.
 - **Sub-accounts / locations:** a merchant can have many **locations** (e.g. stalls A–D), each with its own UPI ID and device(s). Matching is per **location**: the DO key is `merchant_id:location_id`, because each location's phone only sees its own UPI ID's payments.
 

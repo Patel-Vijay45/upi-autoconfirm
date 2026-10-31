@@ -6,10 +6,19 @@ Money is involved, so the matching engine gets the most tests.
 ### Unit (Vitest)
 - **Amount allocation:**
   - Never gives the same `unique_amount` to two open intents at a location.
-  - Releases it on paid/expired/cancelled.
+  - Keeps it reserved for `reuse_cooldown` after paid/cancelled, and after expiry + grace; releases it only then.
+  - Picks offsets at random (not the lowest free one).
   - Returns `slots_exhausted` when all 99 are used.
-- **Matching:** exactly one candidate → paid; zero → unmatched; two or more → ambiguous; expired-but-in-grace → paid (late).
-- **Dedupe:** the same notification twice (same fingerprint) → one signal.
+  - After a DO restart, rebuilds the reserved set from `reserved_until` in D1.
+- **Matching:**
+  - Exactly one candidate → paid; zero → unmatched; two or more → ambiguous; expired-but-in-grace → paid (late).
+  - Above `auto_confirm_max` → signal `review`, intent stays `pending`; confirm → paid (manual); reject → unmatched.
+  - A signal whose `paid_time` is before the intent's `created_at` (minus 2 min) never matches it.
+  - A second payment of the same amount right after a match → unmatched, not matched to a new intent.
+- **Dedupe:**
+  - The same notification twice (same fingerprint) → one signal.
+  - The same payment from two devices → second is `duplicate`.
+  - Two real payments of the same amount on one device (different notification keys) → both kept.
 - **Parser:**
   - A table of real, redacted notification samples per app and language → expected amount, payer and UTR.
   - It must **reject** "Payment of ₹… failed", "Requested ₹…", "You paid ₹…" (outgoing), promos, and cashback.
@@ -23,6 +32,10 @@ Money is involved, so the matching engine gets the most tests.
   - A signal is linked to at most one intent.
   - `paid` intents always have `paid_amount == unique_amount`.
   - Open intents at a location never share an amount.
+  - A unique amount is never given to a new intent before the old one's `reserved_until`.
+  - No intent is paid by a signal with `paid_time` earlier than its `created_at` − 2 min.
+  - Nothing above `auto_confirm_max` becomes `paid` without a staff action.
+- Random streams should include backup-device copies, double payments and late offline-queue signals.
 
 ### Integration (Miniflare / `wrangler dev`)
 - The full flow: API create → device simulator posts a signal → webhook received by a local test server with the signature verified.
