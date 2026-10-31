@@ -83,6 +83,12 @@ const NONCE_TTL_MS = 10 * 60_000;
 const IDEMPOTENCY_TTL_MS = 24 * 3600_000;
 const RETRY_MS = 5_000;
 
+const MAX_SOCKETS_PER_INTENT = 10;
+
+function liveMessage(i: Intent): string {
+	return JSON.stringify({ type: 'status', status: i.status, paid_at: iso(i.paidAt), expires_at: iso(i.expiresAt) });
+}
+
 export function locationObjectName(merchantId: string, locationId: string, livemode: boolean): string {
 	return `${merchantId}:${locationId}:${livemode ? 'live' : 'test'}`;
 }
@@ -246,6 +252,58 @@ export class LocationDO extends DurableObject<Env> {
 		return { ...snap, outbox };
 	}
 
+	/**
+	 * Live status for checkout pages: WebSocket upgrade forwarded by the Worker with x-intent-* headers.
+	 * Sockets use the hibernation API (tagged by intent id), so idle customers cost nothing.
+	 */
+	override async fetch(request: Request): Promise<Response> {
+		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('expected websocket', { status: 426 });
+		const intentId = request.headers.get('x-intent-id') ?? '';
+		if (!/^pi_[a-z0-9]{10,}$/.test(intentId)) return new Response('bad intent', { status: 400 });
+		if (this.ctx.getWebSockets(intentId).length >= MAX_SOCKETS_PER_INTENT) return new Response('too many connections', { status: 429 });
+		const pair = new WebSocketPair();
+		const [client, server] = [pair[0], pair[1]];
+		this.ctx.acceptWebSocket(server, [intentId]);
+		const i = this.engine.getIntent(intentId);
+		const snapshot = i
+			? liveMessage(i)
+			: JSON.stringify({
+					type: 'status',
+					status: request.headers.get('x-intent-status') ?? 'pending',
+					paid_at: request.headers.get('x-paid-at') || null,
+					expires_at: request.headers.get('x-expires-at') || undefined,
+				});
+		server.send(snapshot);
+		return new Response(null, { status: 101, webSocket: client });
+	}
+
+	override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+		if (message === 'ping') ws.send('pong');
+	}
+
+	override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+		try {
+			ws.close(code === 1005 ? 1000 : code, 'bye');
+		} catch {
+			/* already closed */
+		}
+	}
+
+	private broadcast(intents: Intent[]) {
+		for (const i of intents) {
+			const sockets = this.ctx.getWebSockets(i.id);
+			if (sockets.length === 0) continue;
+			const msg = liveMessage(i);
+			for (const ws of sockets) {
+				try {
+					ws.send(msg);
+				} catch {
+					/* closed */
+				}
+			}
+		}
+	}
+
 	override async alarm(): Promise<void> {
 		const now = Date.now();
 		const t = this.engine.tick(now);
@@ -348,6 +406,7 @@ export class LocationDO extends DurableObject<Env> {
 		}
 		const del = [...(opts.removedIntentIds ?? []).map((id) => `i:${id}`), ...(opts.removedSignalIds ?? []).map((id) => `s:${id}`)];
 		for (let k = 0; k < del.length; k += 128) await this.ctx.storage.delete(del.slice(k, k + 128));
+		this.broadcast(changes.intents);
 		await this.flush();
 		await this.schedule();
 	}

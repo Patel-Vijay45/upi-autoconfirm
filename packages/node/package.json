@@ -1,0 +1,12 @@
+{
+  "name": "@autoconfirm/node",
+  "version": "0.1.0",
+  "description": "Server-side client for UPI AutoConfirm: create payment intents and verify webhooks.",
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "vitest --run",
+    "typecheck": "tsc -p ."
+  }
+}

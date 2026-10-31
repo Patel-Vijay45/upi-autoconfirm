@@ -109,10 +109,24 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 Signal statuses: `matched`, `unmatched`, `ambiguous`, `review` (above `auto_confirm_max`, waiting for staff), `ignored`, `duplicate`.
 
 ## 5. Live status (for your own checkout UI)
-- **WebSocket:** `wss://pay.<your-domain>/v1/public/payment_intents/:id/live?key=pk_live_…` sends `{"type":"status","status":"paid","paid_at":"…"}`.
-- **Server-Sent Events:** `GET /v1/public/payment_intents/:id/events`, with the same messages.
-- **Polling fallback:** `GET /v1/public/payment_intents/:id/status` returns `{status, paid_at, expires_at}`. Poll every 3 s at most.
+All with the publishable key, and CORS-enabled for any origin:
+- **Checkout view:** `GET /v1/public/payment_intents/:id` returns what a checkout shows: `{id, status, amount, unique_amount, display_amount, payee_name, order_id, expires_at, paid_at, return_url, upi: {uri, apps}, qr_svg}`.
+- **WebSocket:** `wss://<api>/v1/public/payment_intents/:id/live?key=pk_live_…`.
+  - It sends the current status at once, then `{"type":"status","status":"paid","paid_at":"…","expires_at":"…"}` on every change, pushed the moment the phone reports the payment.
+  - Browsers can't set headers on WebSockets, which is why the key goes in the query.
+  - Up to 10 connections per intent. Send `ping` to get `pong`.
+- **Polling fallback:** `GET /v1/public/payment_intents/:id/status` returns `{status, display_amount, paid_at, expires_at}`. Poll every 3 s at most.
 - Public responses never include customer personal data or the payer name.
+
+## 5a. Hosted checkout page
+`checkout_url` (`https://<checkout host>/p/:id`) is a ready-made payment page. Send the customer there for zero front-end work.
+- **What it shows:** the amount in large digits, Google Pay / PhonePe / Paytm / other-app buttons, the QR code (shown first on desktops), a countdown, "I have paid" and a live status.
+- **When paid:** it shows "Payment received ✓" and returns the customer to `return_url`.
+- **Language:** `?lang=en|hi|gu`, or the browser language.
+- **Works without JavaScript:** the amount and pay buttons are in the HTML.
+- **Endpoints:** the page uses `/p/:id/status`, `/p/:id/claim` and `wss://…/p/:id/live`. The unguessable intent id is the only credential, and nothing personal is returned.
+- **Headers:** strict CSP (nonce scripts, `frame-ancestors 'none'`), `no-store` and `no-referrer`.
+- **Hosting:** the page is served by the API Worker. Point `CHECKOUT_BASE_URL` at the host that serves it (the API host itself, or a `pay.` domain routed to the same Worker).
 
 ## 6. Webhooks
 Configure endpoints in the dashboard or with `POST /v1/webhook_endpoints {url, events[]}`. HTTPS only.
@@ -175,8 +189,10 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
   };
 </script>
 ```
-- The widget is under 15 KB gzipped with no dependencies.
-- It detects Android, iPhone or desktop. It shows the app buttons on phones and a QR on desktop.
+- The widget is about 5 KB gzipped with no dependencies (the build fails above 15 KB). Load it from `https://<api>/v1/checkout.js`.
+- It renders in a shadow root: a bottom sheet on phones and a dialog on desktop. On desktop the QR comes first, and the app buttons are never hidden.
+- If your site has a Content-Security-Policy, allow `script-src` and `connect-src` for the API host (including `wss:`), and `style-src 'unsafe-inline'` for the widget's own styles.
+- `AutoConfirm.open()` returns `{close()}`. `onPaid(pi)` gets `{id, status, order_id, paid_at}`.
 - It shows a live status, an "I have paid" button, and the countdown.
 - Your server **must still confirm** with a webhook or `GET /v1/payment_intents/:id` before fulfilling. `onPaid` is just for the UI.
 

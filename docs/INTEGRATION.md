@@ -10,7 +10,15 @@ Five steps, about 1–2 hours for a developer.
 5. **Developers → Webhooks:** add `https://yoursite.com/webhooks/autoconfirm` and copy the signing secret.
 
 ## 1. Server: create a payment when the customer checks out
-Never put the `sk_` key in the browser.
+Never put the `sk_` key in the browser. In JavaScript/TypeScript servers, the `@autoconfirm/node` client (`packages/node`) does this and the webhook check for you:
+```js
+import { AutoConfirm } from '@autoconfirm/node';
+const ac = new AutoConfirm(process.env.AUTOCONFIRM_SECRET_KEY, { baseUrl: 'https://api.<domain>' });
+const pi = await ac.paymentIntents.create({ amount: 93000, order_id: 'ORD-1042', return_url: 'https://yoursite.com/order/ORD-1042' }, { idempotencyKey: 'order-ORD-1042' });
+// webhook handler (raw body!):
+const event = await ac.webhooks.constructEvent(rawBody, req.headers['autoconfirm-signature'], process.env.AUTOCONFIRM_WEBHOOK_SECRET);
+```
+Or call the HTTP API directly:
 ```http
 POST https://api.<domain>/v1/payment_intents
 Authorization: Bearer sk_test_xxx

@@ -12,7 +12,8 @@
   "dependencies": {
     "@autoconfirm/core": "0.1.0",
     "hono": "^4.13.14",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@autoconfirm/checkout": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.11",

@@ -16,11 +16,16 @@ const KEY_RE = /^Bearer\s+((sk|pk)_(live|test)_[0-9A-Za-z]{20,64})$/;
 
 /** Authenticate a secret (sk_) or publishable (pk_) key. Keys are looked up by SHA-256 hash only. */
 export async function authKey<E extends { Bindings: Env }>(c: Context<E>, kind: 'secret' | 'publishable'): Promise<MerchantAuth> {
-	const m = KEY_RE.exec(c.req.header('authorization') ?? '');
+	return authKeyValue(c.env, c.req.header('authorization') ?? '', kind);
+}
+
+/** Same as authKey, for a raw "Bearer …" value (e.g. a WebSocket ?key= that browsers can't send as a header). */
+export async function authKeyValue(env: Env, authorization: string, kind: 'secret' | 'publishable'): Promise<MerchantAuth> {
+	const m = KEY_RE.exec(authorization);
 	if (!m) throw unauthorized();
 	if ((m[2] === 'sk') !== (kind === 'secret')) throw unauthorized(kind === 'secret' ? 'a secret key (sk_) is required' : 'a publishable key (pk_) is required');
 	const hash = await sha256Hex(m[1]!);
-	const row = await c.env.DB.prepare(
+	const row = await env.DB.prepare(
 		`SELECT k.merchant_id, k.livemode, k.prefix, m.status, m.settings
 		 FROM api_keys k JOIN merchants m ON m.id = k.merchant_id
 		 WHERE k.key_hash = ? AND k.kind = ? AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at > ?)`,

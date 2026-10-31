@@ -1,0 +1,17 @@
+{
+  "name": "@autoconfirm/checkout",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./template": "./src/template.ts",
+    "./view": "./src/view.ts",
+    "./i18n": "./src/i18n.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check",
+    "test": "node build.mjs --check",
+    "typecheck": "tsc -p ."
+  }
+}

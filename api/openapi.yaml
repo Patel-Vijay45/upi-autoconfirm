@@ -57,7 +57,7 @@ components:
             gpay: { type: string }
             phonepe: { type: string }
             paytm: { type: string }
-        qr_svg: { type: string, description: QR code of the generic link, as SVG markup }
+        qr_svg: { type: string, description: 'QR code of the generic link, as SVG markup (on create and retrieve; not in lists)' }
     Match:
       type: object
       nullable: true
@@ -338,6 +338,14 @@ paths:
       parameters: [{ $ref: '#/components/parameters/IntentId' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PublicStatus' } } } }
+  /public/payment_intents/{id}:
+    get:
+      summary: Checkout view for your own UI or the widget (publishable key). No personal data.
+      security: [{ publishableKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/IntentId' }]
+      responses:
+        '200': { description: 'id, status, amount, unique_amount, display_amount, payee_name, order_id, expires_at, paid_at, return_url, upi, qr_svg' }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /public/payment_intents/{id}/claim:
     post:
       summary: Customer says "I have paid" (shown to staff; never marks paid)

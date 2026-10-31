@@ -42,7 +42,9 @@ Code in `apps/android` (see its README). Unit tests pass, and its network code w
   - Whether Google Pay, PhonePe and Paytm accept the app-specific links (`gpay://`, `phonepe://`, `paytmmp://`) with `tr` set, for a small merchant's UPI ID and at typical order sizes. Some apps block or limit these. Fall back to plain `upi://pay` without `tr` if needed.
 - Exit criteria before real use: match rate > 95 % and zero wrong confirmations over 300+ test payments.
 
-## Step 3: Integration kit
+## Step 3: Integration kit ✅ built
+Hosted page, widget, live WebSocket status, server-made QR codes and the Node client are done. They are tested in a real browser (`npm run test:e2e`). Still to do: the PHP/Python examples haven't been run against the real API yet.
+
 - Hosted checkout page and `checkout.js` widget (< 15 KB gzipped).
 - `@autoconfirm/node` client library: create intent, verify webhook, retrieve. About 10 lines per project.
 - Examples for Node, PHP and Python (see `examples/`).

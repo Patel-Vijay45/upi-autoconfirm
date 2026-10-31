@@ -20,6 +20,7 @@ import {
 import { iso, presentIntent, presentPublicStatus, presentSignal, rowFromEngine } from './present.ts';
 import { locationObjectName, type Actor, type LocationCtx, type Result } from './location-do.ts';
 import { settingsFromJson } from './settings.ts';
+import { registerCheckout } from './checkout.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
 type Ctx = Context<AppEnv>;
@@ -259,9 +260,12 @@ app.notFound((c) => c.json({ error: { type: 'not_found', code: 'not_found', mess
 
 app.get('/', (c) => c.json({ service: 'upi-autoconfirm', ok: true }));
 
+// Customer-facing checkout page, checkout.js and live status (registered before the merchant-key middleware).
+registerCheckout(app);
+
 // Merchant (secret key) routes: everything under /v1 except /v1/public.
 app.use('/v1/*', async (c, next) => {
-	if (c.req.path.startsWith('/v1/public/')) return next();
+	if (c.req.path.startsWith('/v1/public/') || c.req.path === '/v1/checkout.js') return next();
 	c.set('auth', await authKey(c, 'secret'));
 	return next();
 });
@@ -400,7 +404,7 @@ app.get('/v1/payment_intents', async (c) => {
 		object: 'list',
 		data: page.flatMap((r) => {
 			const l = locs.get(r.location_id);
-			return l ? [presentIntent(r, l, c.env.CHECKOUT_BASE_URL, now)] : [];
+			return l ? [presentIntent(r, l, c.env.CHECKOUT_BASE_URL, now, null, { qr: false })] : [];
 		}),
 		has_more: rows.results.length > q.data.limit,
 	});

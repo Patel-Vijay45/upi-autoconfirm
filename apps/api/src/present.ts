@@ -1,5 +1,6 @@
 // API representations (see api/openapi.yaml). Public status never includes personal data.
-import { buildUpiLinks, formatPaise, type Intent, type Signal } from '@autoconfirm/core';
+import { buildUpiLinks, formatPaise, qrSvg, type Intent, type Signal } from '@autoconfirm/core';
+import type { CheckoutView } from '@autoconfirm/checkout/view';
 import type { IntentRow, LocationRow, NewIntentExtras, SignalRow } from './db.ts';
 
 export const iso = (ms: number | null | undefined) => (ms === null || ms === undefined ? null : new Date(ms).toISOString());
@@ -40,7 +41,14 @@ export function rowFromEngine(i: Intent, x: NewIntentExtras): IntentRow {
 	};
 }
 
-export function presentIntent(row: IntentRow, location: LocationRow, checkoutBase: string, now: number, matchedSignal?: SignalRow | null) {
+export function presentIntent(
+	row: IntentRow,
+	location: LocationRow,
+	checkoutBase: string,
+	now: number,
+	matchedSignal?: SignalRow | null,
+	opts: { qr?: boolean } = {},
+) {
 	const status = effectiveStatus(row, now);
 	const upi = buildUpiLinks({ vpa: location.upi_vpa, payeeName: location.upi_payee_name }, row.unique_amount, row.id, row.order_id ?? undefined);
 	let metadata: Record<string, string> = {};
@@ -68,7 +76,8 @@ export function presentIntent(row: IntentRow, location: LocationRow, checkoutBas
 		livemode: row.livemode === 1,
 		checkout_url: `${checkoutBase.replace(/\/$/, '')}/p/${row.id}`,
 		return_url: row.return_url,
-		upi,
+		// qr_svg is left out of lists to keep them small.
+		upi: opts.qr === false ? upi : { ...upi, qr_svg: qrSvg(upi.uri) },
 		match:
 			row.status === 'paid'
 				? {
@@ -156,5 +165,24 @@ export function webhookSignalObject(s: Signal, locationId: string, reason?: stri
 		received_at: iso(s.receivedAt),
 		payment_intent: s.intentId,
 		reason: reason ?? null,
+	};
+}
+
+/** What the hosted page and checkout.js show. Built from the intent and its location; no customer data. */
+export function checkoutView(row: IntentRow, location: LocationRow, now: number): CheckoutView {
+	const upi = buildUpiLinks({ vpa: location.upi_vpa, payeeName: location.upi_payee_name }, row.unique_amount, row.id, row.order_id ?? undefined);
+	return {
+		id: row.id,
+		status: effectiveStatus(row, now),
+		amount: row.amount,
+		unique_amount: row.unique_amount,
+		display_amount: formatPaise(row.unique_amount),
+		payee_name: location.upi_payee_name,
+		order_id: row.order_id,
+		expires_at: iso(row.expires_at)!,
+		paid_at: iso(row.paid_at),
+		return_url: row.return_url,
+		upi,
+		qr_svg: qrSvg(upi.uri),
 	};
 }
