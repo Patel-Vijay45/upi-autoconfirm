@@ -1,0 +1,17 @@
+{
+  "name": "@autoconfirm/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest --run",
+    "typecheck": "tsc -p .",
+    "db:migrate:local": "wrangler d1 migrations apply autoconfirm --local"
+  },
+  "dependencies": {
+    "@autoconfirm/core": "0.1.0",
+    "hono": "^4.13.0",
+    "zod": "^4.6.0"
+  }
+}
