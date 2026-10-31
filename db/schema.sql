@@ -16,7 +16,7 @@ CREATE TABLE merchants (
 	created_at INTEGER NOT NULL
 );
 
-CREATE TABLE locations (                     -- a shop/stall/counter with its own UPI ID and phone(s)
+CREATE TABLE locations (                     -- a shop/branch/counter with its own UPI ID and phone(s)
 	id TEXT PRIMARY KEY,                       -- loc_xxx
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
 	name TEXT NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE devices (
 	id TEXT PRIMARY KEY,                       -- dev_xxx
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
 	location_id TEXT NOT NULL REFERENCES locations(id),
-	label TEXT NOT NULL,                       -- "Stall A counter phone"
+	label TEXT NOT NULL,                       -- "Counter 1 phone"
 	secret_hash TEXT NOT NULL,                 -- server keeps sha256(secret) + encrypted secret for HMAC (see SECURITY.md)
 	secret_enc TEXT NOT NULL,                  -- AES-GCM(secret) with a key from Workers Secrets
 	model TEXT, android_version TEXT, app_version TEXT,

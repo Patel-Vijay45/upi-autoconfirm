@@ -78,12 +78,12 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
   3. Run the e2e suite against staging, using the device simulator (TESTING.md).
   4. Manual approve, then production.
 - **Migrations:** additive only (new columns/tables). Remove things in a later release.
-- **Avoid peak hours:** no deploys 6 pm–11 pm IST, or during festival weeks (Diwali, Navratri) unless it's a fix.
+- **Avoid peak hours:** no deploys 6 pm–11 pm IST, or during merchants' peak seasons (festivals, sales) unless it's a fix.
 - **Rollback:** `wrangler rollback`, and the DB stays compatible because of additive migrations.
 
 ## 7. Support
-- **In-app help:** the "Phone checklist" plus short videos (Gujarati/Hindi/English) for pairing and battery settings.
-- WhatsApp support number for merchants; reply targets: 15 min in festival season, otherwise same day.
+- **In-app help:** the "Phone checklist" plus short videos (English, Hindi and regional languages) for pairing and battery settings.
+- WhatsApp support number for merchants; reply targets: 15 min in peak seasons, otherwise same day.
 - **Canned answers:** phone offline, amount mismatch, refund (AutoConfirm can't refund; the merchant refunds from their UPI app), and "is my money safe" (money goes straight to their bank, and AutoConfirm never touches it).
 
 ## 8. Data retention jobs (Cron, daily 03:30 IST)

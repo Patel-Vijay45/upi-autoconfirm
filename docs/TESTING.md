@@ -50,7 +50,7 @@ Money is involved, so the matching engine gets the most tests.
   - The status flips to "Paid ✓" when the simulator sends a signal.
 - Returning from the UPI app (`pageshow`) re-checks the status at once.
 - Expired screen and the "show this at the counter" fallback.
-- Gujarati, Hindi and English strings are all present.
+- Strings for every supported language are present.
 
 ### Device simulator
 `tools/device-sim.mjs --location loc_a --amount 930.07 --app gpay` signs and sends a notification payload exactly as the Android app would. Use it in CI and for demos without a phone.

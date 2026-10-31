@@ -15,7 +15,7 @@ Official sources first. Links were correct when written (Oct 2026). Re-check pri
 
 ## Payment gateways (for comparison and pricing)
 - Razorpay pricing: https://razorpay.com/pricing/
-- Cashfree pricing: https://www.cashfree.com/payment-gateway-charges/ (check the prohibited-business list: fireworks are listed)
+- Cashfree pricing: https://www.cashfree.com/payment-gateway-charges/ (check the prohibited-business list)
 - Paytm Payment Gateway pricing: https://business.paytm.com/payment-gateway
 - PhonePe Payment Gateway: https://www.phonepe.com/business-solutions/payment-gateway/
 

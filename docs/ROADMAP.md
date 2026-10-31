@@ -1,60 +1,65 @@
 # Roadmap
 
-Start small and real, then generalise.
+AutoConfirm is a **standalone, reusable service**. Any number of projects (online shops, counters, restaurants, booking sites) plug into it as separate merchants through the same API, webhooks and checkout page. No project is special-cased.
 
-## Phase 0: Pilot inside the crackers site (1–2 weeks)
-Goal: prove the matching works at a real counter with real customers.
-- **Crackers site:** unique paise amounts, "Pay with Google Pay / PhonePe / Paytm / other UPI app" buttons and a QR, an "I have paid" screen, and live status.
-- **A minimal Android forwarder** (sideloaded APK) for one or two stall phones.
-- **Matching inside the existing Worker + LiveHub DO** (no separate service yet).
-- **Keep the manual fallback:** staff "UPI received" button and UTR entry.
-- **Measure:**
-  - Match rate.
-  - Time to confirm.
-  - How often customers change the amount.
-  - Phone-offline incidents.
-- **Verify on real phones:**
+## Step 1: Core service (API + matching engine)
+- **Repo layout:** npm workspaces with `packages/core`, `apps/api` and `tools/`.
+- **`packages/core`:** pure TypeScript with no platform code.
+  - Paise helpers: parse and format, no floats.
+  - Unique-amount allocation with random offsets and the reuse cool-down.
+  - The matching engine (MATCHING.md §3), including review, dedupe and late signals.
+  - Webhook and device signatures, and UPI link building.
+- **`apps/api`:** Cloudflare Worker (Hono).
+  - Payment intent endpoints, the signals inbox, device enroll, signals and heartbeat.
+  - One Durable Object per location runs the engine. D1 is the record.
+  - Webhooks are delivered through Queues, signed.
+- **Tests:**
+  - Unit tests and property tests (fast-check) for every invariant in TESTING.md.
+  - A cross-tenant test for each endpoint.
+- **`tools/device-sim.mjs`:** signs and sends signals exactly like the phone app.
+
+## Step 2: Android app
+- Pairing QR.
+- Signed requests.
+- Offline queue.
+- Remote parser rules.
+- Clock reporting on heartbeat.
+- Self-check screen.
+- Verify on real phones:
   - The real notification wording and package names for each payment app (needed for parser rules).
   - Whether Google Pay, PhonePe and Paytm accept the app-specific links (`gpay://`, `phonepe://`, `paytmmp://`) with `tr` set, for a small merchant's UPI ID and at typical order sizes. Some apps block or limit these. Fall back to plain `upi://pay` without `tr` if needed.
-- **Exit criteria:** match rate > 95 % and zero wrong confirmations over 300+ payments.
+- Exit criteria before real use: match rate > 95 % and zero wrong confirmations over 300+ test payments.
 
-## Phase 1: Standalone service, single tenant (2–4 weeks)
-- **New repo** from this folder: API Worker, MerchantDO, D1 schema, webhooks with signatures and retries.
-- **Android app v1:**
-  - Pairing QR.
-  - Signed requests.
-  - Offline queue.
-  - Remote parser rules.
-  - Self-check screen.
-- **Integration:** the crackers site moves to calling the API and webhook (INTEGRATION.md).
-- **Tooling:** device simulator, test suite, staging environment.
+## Step 3: Integration kit
+- Hosted checkout page and `checkout.js` widget (< 15 KB gzipped).
+- `@autoconfirm/node` client library: create intent, verify webhook, retrieve. About 10 lines per project.
+- Examples for Node, PHP and Python (see `examples/`).
 
-## Phase 2: Multi-tenant for your other client websites (1–2 months)
-- **Dashboard (SvelteKit):**
-  - Sign up.
-  - Locations.
-  - Devices.
-  - Keys.
-  - Webhooks with logs and replay.
-  - Signals inbox.
-  - Reports.
-- **Integration options:**
-  - Hosted checkout page and `checkout.js` widget.
-  - Examples for Node/PHP/Python.
-  - A WooCommerce plugin (big market).
-- **Per-merchant setup:** limits, rate limits, audit log, data-retention jobs.
+## Step 4: Dashboard (SvelteKit)
+- Merchants, locations, devices (pairing QR), API keys.
+- Webhooks with logs and replay.
+- Signals inbox (unmatched, ambiguous, review).
+- Reports and CSV export.
+- Self-serve signup can come later; at first, merchants are created by the operator.
+
+## Step 5: Use-case features
+See [USE-CASES.md](USE-CASES.md).
+- Unique QR printed on bills (POS / thermal printer).
+- Longer expiry per merchant.
+- Tip buttons and split bills.
+- Table or counter QR stickers that open the current bill.
+- WooCommerce plugin; Shopify and other SDKs.
+
+## Step 6: Product (later)
 - **Legal review** (COMPLIANCE.md) before onboarding outside merchants.
-
-## Phase 3: Product (later)
 - Play Store release (follow the notification-listener policy declaration).
 - Plans: free tier (e.g. 300 confirmations/month), then a small flat monthly fee. Never a % of the payment.
 - Soundbox and bank-app parsers for more coverage; email-alert parsing as a backup channel.
-- Reports: daily settlement summary to match the bank statement; CSV export.
 - Optional: an official bank collect API (e.g. a current-account UPI API from a partner bank) as a "pro" signal source with callbacks and no phone needed.
-- Shopify / custom-app SDKs; WhatsApp payment links.
 
 ## Not planned (on purpose)
 - Holding or moving customer money (that would need RBI PA licensing).
 - Refunds through the service (merchants refund from their own UPI app).
 - Reading SMS or using Accessibility services (Play Store risk and privacy).
 - Card payments.
+- Extra steps for the customer (typing a UTR, uploading screenshots). The customer only pays the amount shown.

@@ -22,7 +22,7 @@ Payment app shows notification  (bank + app: usually 1–5 s after the customer 
 ```
 
 ## 3. Scale model
-- **Matching load is per location.** A busy stall at peak handles about 2–5 payments per minute; even 100 per minute is trivial for one Durable Object, which handles hundreds of requests per second.
+- **Matching load is per location.** A busy counter at peak handles about 2–5 payments per minute; even 100 per minute is trivial for one Durable Object, which handles hundreds of requests per second.
 - **Total load** grows with merchants, and the work is spread across one object per location, so it scales horizontally without coordination.
 - **D1:**
   - Start with one database.
@@ -41,7 +41,7 @@ Payment app shows notification  (bank + app: usually 1–5 s after the customer 
 ## 4. Cost (Cloudflare list prices change; recheck before quoting)
 | Scale | Rough monthly infra cost |
 |---|---|
-| Pilot (1–10 merchants) | Free tier or $5 Workers Paid |
+| Small (1–10 merchants) | Free tier or $5 Workers Paid |
 | 1,000 merchants | ~$5–30 |
 | 10,000 merchants | ~$100–400 (mostly requests and D1 writes) |
 

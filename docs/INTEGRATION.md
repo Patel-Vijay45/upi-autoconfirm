@@ -14,10 +14,10 @@ Never put the `sk_` key in the browser.
 ```http
 POST https://api.<domain>/v1/payment_intents
 Authorization: Bearer sk_test_xxx
-Idempotency-Key: order-A-31-7
+Idempotency-Key: order-ORD-1042
 Content-Type: application/json
 
-{"amount": 93000, "order_id": "A-31-7", "return_url": "https://yoursite.com/order/A-31-7"}
+{"amount": 93000, "order_id": "ORD-1042", "return_url": "https://yoursite.com/order/ORD-1042"}
 ```
 Save `intent.id` against your order, then either:
 - **redirect** the customer to `intent.checkout_url` (zero front-end work), or
@@ -52,11 +52,3 @@ See [`../examples/checkout.html`](../examples/checkout.html). It's a few lines: 
 | [`examples/php-wordpress.php`](../examples/php-wordpress.php) | Plain PHP / WordPress / WooCommerce hook |
 | [`examples/python-flask.py`](../examples/python-flask.py) | Python / Flask (same idea for Django/FastAPI) |
 | [`examples/checkout.html`](../examples/checkout.html) | Widget **and** a no-widget fallback with plain links |
-
-## Plugging into the diwali-ecom (crackers) site
-The crackers site already has a per-stall UPI ID, a "Pay now by UPI" option, UTR entry and staff "UPI received" buttons. To switch to AutoConfirm:
-1. Map each stall to an AutoConfirm **location** (stall A → `loc_a`, …) and store `autoconfirm_location_id` on `locations`.
-2. In `placeOrder` (`src/lib/server/orders.ts`), when payment = UPI, call `POST /v1/payment_intents` with `amount = order.total`, `order_id = token_label` and the stall's location. Store `intent.id` and `unique_amount` on the order.
-3. Order page: show `display_amount` (₹930.07) and the app buttons from `intent.upi.apps`, plus an "I have paid" button that calls `/claim`. Subscribe to the live status.
-4. New route `POST /api/webhooks/autoconfirm`: verify the signature, then on `payment_intent.paid` run the existing staff action `pay` with `paid_via: 'upi'`. The worker board and customer page then update live through the existing LiveHub.
-5. Keep the current UTR and manual buttons as the fallback.

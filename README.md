@@ -5,8 +5,8 @@
 
 Customers pay with Google Pay, PhonePe, Paytm, BHIM or any UPI app straight into the **merchant's own UPI ID**. The service tells the merchant's website **"order X is paid"** within seconds. There is no payment gateway, no MDR or percentage fee, and the money never passes through us.
 
-> **Status:** design and specification, written 31 Oct 2026. First user is the Shreenathji Crackers stall site (`diwali-ecom` repo).
-> This folder is self-contained: copy it into a new repository to start the product.
+> **Status:** design done; core service (Step 1) in progress. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> AutoConfirm is a standalone, reusable service. Any project (online shop, counter, restaurant, bookings) plugs in as a merchant through the same API. See [docs/USE-CASES.md](docs/USE-CASES.md).
 
 ## How it works
 
@@ -37,7 +37,7 @@ Merchant website ◀──webhook── AutoConfirm service ── match ──�
 |---|---|---|
 | Fee per payment | ~1.95–2% + 18% GST (as of Oct 2026) | **₹0** (flat monthly subscription if sold) |
 | Who holds the money | Gateway, then settles T+1/T+2 | **The merchant's bank account, instantly** |
-| Business restrictions | Many categories refused (e.g. fireworks) | Any business that can get a business UPI ID |
+| Business restrictions | Some business categories refused | Any business that can get a business UPI ID |
 | Automatic confirmation | Yes | Yes (via the merchant's phone), plus manual fallback |
 | Refunds, cards, net banking | Yes | **No**: UPI only, refunds done by the merchant |
 
@@ -57,7 +57,8 @@ Merchant website ◀──webhook── AutoConfirm service ── match ──�
 | [docs/COMPLIANCE.md](docs/COMPLIANCE.md) | RBI, NPCI, DPDP Act, Play Store, UPI-app terms (**get a lawyer**) |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Monitoring, alerts, runbooks, backups, support |
 | [docs/TESTING.md](docs/TESTING.md) | Test plan and go-live checklists |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Phases from Diwali pilot to product, with tasks |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Build steps from core service to product |
+| [docs/USE-CASES.md](docs/USE-CASES.md) | Online shops, counters, restaurants, bookings: what each needs |
 | [docs/REFERENCES.md](docs/REFERENCES.md) | Official docs and resources |
 | [examples/](examples/) | Copy-paste integration code |
 | [CLAUDE.md](CLAUDE.md) | Instructions for AI coding sessions in the new repo |

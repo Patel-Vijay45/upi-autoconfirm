@@ -33,7 +33,7 @@ The app's only job is to **notice "money received" notifications from the mercha
 ## 4. Parsing notifications
 
 ### 4.1 What the listener sees
-For each notification: package name, title, text, big text, `postTime` and key. Example, illustrative only, since real wording must be collected in the pilot:
+For each notification: package name, title, text, big text, `postTime` and key. Example, illustrative only, since real wording must be collected on real phones:
 ```
 package: com.phonepe.app.business   title: "Payment received"   text: "₹930.07 received from RAMESH PATEL"
 ```
@@ -54,7 +54,7 @@ package: com.phonepe.app.business   title: "Payment received"   text: "₹930.07
   ]
 }
 ```
-- Package names and regexes **must be verified on real devices** during the pilot (ROADMAP Phase 0). The example above is a template, not tested wording.
+- Package names and regexes **must be verified on real devices** before real use (ROADMAP Step 2). The example above is a template, not tested wording.
 - Rules can also match **bank SMS** shown as notifications by the SMS app (e.g. "Rs 930.07 credited to a/c XX1234 by VPA ramesh@okaxis"). This needs no SMS permission; we only read the notification.
 - **Order of checks:** if the package isn't in the rules, ignore it. If an `ignore` pattern matches, ignore it. Otherwise try the `incoming` patterns. If one matches, it's a signal. If nothing matches but the text contains ₹ or Rs, record a parse failure (redacted).
 - The amount is parsed as an exact decimal to paise: strip commas and **never use floating point**. "930.7" means 93070 paise.
@@ -74,7 +74,7 @@ package: com.phonepe.app.business   title: "Payment received"   text: "₹930.07
 | Duplicate notifications (app updates the same notification) | Device-side dedupe by notification key + amount within 2 min; the server dedupes again (MATCHING §3) |
 | Phone restarted | `BOOT_COMPLETED` receiver re-schedules work; the listener is rebound by the system |
 | App update changes behaviour | Staged rollout; rules versioned; parse-failure rate alert per app and version |
-| Two phones per location (backup) | Both send; the server dedupes. Recommended for big stalls. |
+| Two phones per location (backup) | Both send; the server dedupes. Recommended for busy counters. |
 
 ## 6. Security on the device
 - `device_secret` never leaves the Keystore-protected storage, and it's not shown in the UI.

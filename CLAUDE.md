@@ -61,3 +61,6 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
 - Tests: `npx vitest --run` (unit + property), `npx playwright test` (e2e)
 - Device simulator: `node tools/device-sim.mjs --location loc_test --amount 1.03 --app gpay`
 - Deploy: GitHub Actions → staging → manual approval → production
+
+## Scope
+- This is a generic, reusable service. Never add project-specific code, names or special cases. Every project is just a merchant using the public API (see docs/USE-CASES.md).

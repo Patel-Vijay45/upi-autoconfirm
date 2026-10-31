@@ -91,10 +91,10 @@ SvelteKit on Workers with:
 | Cache/config | Workers KV | Parser rules, feature flags |
 | Files | R2 | CSV exports, rule bundles |
 | Validation | Zod (shared schemas → OpenAPI) | One source of truth |
-| Dashboard | SvelteKit 3 + Tailwind | Same stack as the first customer site |
+| Dashboard | SvelteKit + Tailwind | Small bundles, runs on Workers |
 | Android | Kotlin, Jetpack (WorkManager, Room, DataStore), OkHttp | Reliability in the background |
 | Tests | Vitest + Miniflare, Playwright, k6/autocannon, JUnit + Robolectric (Android) | |
-| CI/CD | GitHub Actions → `wrangler deploy` | Same as diwali-ecom |
+| CI/CD | GitHub Actions → `wrangler deploy` | Simple, built into GitHub |
 
 > **Alternative stack:** if Cloudflare isn't wanted, use Node.js (Fastify) + Postgres (row lock or advisory lock per location for matching) + Redis (pub/sub for live status) + BullMQ (webhooks) on any VPS. The design below doesn't depend on Cloudflare; only the "one actor per location" idea matters.
 
@@ -102,7 +102,7 @@ SvelteKit on Workers with:
 
 ### 4.1 Create payment
 ```
-Merchant server → POST /v1/payment_intents {amount: 93000, order_id: "A-31-7"}
+Merchant server → POST /v1/payment_intents {amount: 93000, order_id: "ORD-1042"}
   API Worker → MerchantDO.allocate(93000)
      → picks unique_amount 93007 (random free paise offset for this base amount; reserved amounts excluded)
      → stores intent (pending, expires_at = now + 15 min)
@@ -137,7 +137,7 @@ MerchantDO:
 - Every row has a `merchant_id`. Every query is scoped by it, enforced in a single data-access layer and covered by tests.
 - MerchantDO id = `idFromName(merchant_id + ":" + location_id)`.
 - Keys, devices and webhooks belong to exactly one merchant.
-- **Sub-accounts / locations:** a merchant can have many **locations** (e.g. stalls A–D), each with its own UPI ID and device(s). Matching is per **location**: the DO key is `merchant_id:location_id`, because each location's phone only sees its own UPI ID's payments.
+- **Sub-accounts / locations:** a merchant can have many **locations** (e.g. counters A–D, or branches), each with its own UPI ID and device(s). Matching is per **location**: the DO key is `merchant_id:location_id`, because each location's phone only sees its own UPI ID's payments.
 
 ## 6. Environments
 - `dev`: Miniflare locally; a fake device simulator posts signals.

@@ -32,8 +32,8 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 {
   "amount": 93000,
   "location_id": "loc_a",
-  "order_id": "A-31-7",
-  "description": "Shreenathji Crackers order A-31-7",
+  "order_id": "ORD-1042",
+  "description": "Order ORD-1042",
   "customer": { "name": "Ramesh Patel", "phone": "98XXXXXXXX" },
   "expires_in": 900,
   "return_url": "https://shop.example.com/order/abc123",
@@ -52,16 +52,16 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
   "unique_amount": 93007,
   "display_amount": "930.07",
   "currency": "INR",
-  "order_id": "A-31-7",
+  "order_id": "ORD-1042",
   "location_id": "loc_a",
   "expires_at": "2026-11-06T14:20:00Z",
   "checkout_url": "https://pay.<your-domain>/p/pi_7h3k2m9q4x",
   "upi": {
-    "uri": "upi://pay?pa=shop@ybl&pn=Shreenathji%20Crackers&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x",
+    "uri": "upi://pay?pa=shop@ybl&pn=My%20Shop&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x",
     "apps": {
-      "gpay": "gpay://upi/pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x",
-      "phonepe": "phonepe://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x",
-      "paytm": "paytmmp://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x"
+      "gpay": "gpay://upi/pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x",
+      "phonepe": "phonepe://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x",
+      "paytm": "paytmmp://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x"
     },
     "qr_svg": "<svg …>"
   },
@@ -129,7 +129,7 @@ Configure endpoints in the dashboard or with `POST /v1/webhook_endpoints {url, e
   "livemode": true,
   "data": {
     "object": { "id": "pi_7h3k2m9q4x", "status": "paid", "amount": 93000, "unique_amount": 93007,
-                "order_id": "A-31-7", "paid_at": "2026-11-06T14:07:30Z",
+                "order_id": "ORD-1042", "paid_at": "2026-11-06T14:07:30Z",
                 "match": { "source": "auto", "signal_id": "sig_…", "app": "phonepe_business", "late": false } }
   }
 }
@@ -158,7 +158,7 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
     AutoConfirm.open({
       key: 'pk_live_xxx',
       intent: intentId,
-      lang: 'gu',                 // gu | hi | en
+      lang: 'en',                 // en | hi | gu (more later)
       onPaid: (pi) => location.href = '/thank-you?order=' + pi.order_id,
       onExpired: () => alert('Time over. Please try again.'),
       onClose: () => {}
