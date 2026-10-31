@@ -15,6 +15,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build -w @autoconfirm/dashboard
   android:
     runs-on: ubuntu-latest
     defaults:

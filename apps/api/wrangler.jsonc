@@ -21,6 +21,8 @@
   ],
   "vars": {
     "CHECKOUT_BASE_URL": "https://pay.example.com"
+    // Production: also set "PUBLIC_API_URL": "https://api.<your-domain>" (put in phone pairing links) and
+    // "DASHBOARD_URL" (put in invite links). Local dev can set them in .dev.vars.
   }
   // Secrets (wrangler secret put): DEVICE_KEY, WEBHOOK_KEY (base64 32 bytes each), ADMIN_TOKEN.
   // Local dev: put them in apps/api/.dev.vars (git-ignored).

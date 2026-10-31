@@ -306,6 +306,10 @@ app.post('/v1/locations/:id/pairing_codes', async (c) => {
 		.bind(await sha256Hex(code), auth.merchantId, loc.id, auth.livemode ? 1 : 0, expiresAt)
 		.run();
 	// The phone app opens this link (QR scanned with the camera). The API base is where the phone sends signals.
+	// Behind a service binding (the dashboard) the request URL is internal, so the public URL must be configured.
+	if (!c.env.PUBLIC_API_URL && new URL(c.req.url).hostname.endsWith('.internal')) {
+		throw new ApiError(500, 'api_error', 'public_api_url_missing', 'Set PUBLIC_API_URL on the API so phones know where to send payments.');
+	}
 	const apiBase = (c.env.PUBLIC_API_URL || new URL(c.req.url).origin).replace(/\/$/, '');
 	const pairingLink = `autoconfirm://pair?api=${encodeURIComponent(apiBase)}&code=${code}`;
 	return c.json({ object: 'pairing_code', code, pairing_link: pairingLink, location_id: loc.id, livemode: auth.livemode, expires_at: iso(expiresAt) }, 201);

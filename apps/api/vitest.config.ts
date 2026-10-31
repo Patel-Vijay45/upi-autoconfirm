@@ -20,6 +20,8 @@ export default defineConfig(async () => {
 						ADMIN_TOKEN: 'test-admin-token-0123456789abcdef0123',
 						MFA_KEY: 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=',
 						DASHBOARD_URL: 'https://dash.example.com',
+						// Tests must not depend on a developer's local .dev.vars.
+						PUBLIC_API_URL: '',
 					},
 				},
 			}),

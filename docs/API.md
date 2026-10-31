@@ -224,3 +224,40 @@ The server rejects requests that are more than 5 min skewed or that reuse a nonc
 - Returns the merchant id and its four keys (`sk_test_`, `pk_test_`, `sk_live_`, `pk_live_`). They are shown once.
 - Disabled when the `ADMIN_TOKEN` secret is not set (or is shorter than 32 characters).
 - Settings use the names in MATCHING.md §1.1, with times in seconds.
+
+## 10. Dashboard API
+The dashboard (`apps/dashboard`) uses these. They also work for your own tools.
+
+**Logins:**
+- `POST /dashboard/v1/login` with `{email, password, otp?}` returns `{token: "ses_…", expires_at, user, merchant}`.
+  - The error code is `otp_required` until the 6-digit code is sent. Owners and admins must use one.
+  - 5 failures per email lock the email for 15 min (`429`).
+- Send the token as `Authorization: Bearer ses_…`, plus `AutoConfirm-Mode: live|test` to choose which data to see. Sessions last 12 hours.
+- `POST /dashboard/v1/logout`. `GET /dashboard/v1/me`.
+
+**Invites:**
+- Create one with `POST /v1/users/invites` `{email, role}` (owner/admin), or `POST /admin/v1/merchants/:id/invites` (operator).
+- The response has a one-time `token` (72 h). `GET /dashboard/v1/invites/:token` shows the authenticator QR. `POST` it with `{password, otp?}` to finish and log in.
+
+**Roles:**
+| | owner | admin | staff | developer | secret key |
+|---|---|---|---|---|---|
+| See payments, inbox, phones, reports | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Mark paid, cancel, undo, match inbox | ✓ | ✓ | ✓ | | ✓ |
+| Counters, pairing, remove phones | ✓ | ✓ | | | ✓ |
+| Webhooks, events, deliveries | ✓ | ✓ | | ✓ | ✓ |
+| API keys (create/revoke) | ✓ | ✓ | | test only | |
+| Settings (change), team, activity log | ✓ | ✓ | | | |
+
+**Endpoints:**
+- Team: `GET /v1/users`, `POST /v1/users/:id/deactivate`.
+- Keys: `GET /v1/api_keys`, `POST /v1/api_keys {kind}` (the full key is returned once), `POST /v1/api_keys/:id/revoke`.
+- Phones and counters: `GET /v1/devices?location_id=`, `POST /v1/devices/:id/revoke`, `POST /v1/locations/:id {name?, active?}`.
+- Webhooks: `POST /v1/webhook_endpoints/:id/enable|disable`, `GET /v1/webhook_deliveries?endpoint_id=`, `GET /v1/events?type=`, `POST /v1/events/:id/resend`.
+- Reports (IST days, up to 92 at a time):
+  - `GET /v1/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+  - `GET /v1/reports/payments.csv?from&to`. Cells that start with `= + - @` are prefixed with `'` so spreadsheets don't run them as formulas.
+- Settings: `GET /v1/settings`, and `POST /v1/settings {auto_confirm_max, intent_ttl, max_intent_ttl, grace_window, reuse_cooldown, max_offset}` (session, owner/admin; times in seconds).
+- Activity log: `GET /v1/audit_log`.
+- Inbox help: `GET /v1/signals/:id` includes `suggestions`, the closest open orders by amount and time.
+

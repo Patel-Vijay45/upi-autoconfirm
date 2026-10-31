@@ -91,3 +91,25 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 - Payer name: mask after 30 days (`R***h`).
 - `idempotency` rows: 24 h. `pairing_codes`: 10 min. `webhook_deliveries`: 30 days.
 - Expire `pending` intents past `expires_at` + grace, and emit `payment_intent.expired`.
+
+## 9. Deployment configuration
+Two Workers: `autoconfirm-api` (apps/api) and `autoconfirm-dashboard` (apps/dashboard).
+
+**API secrets** (`wrangler secret put`): each of the first three is 32 random bytes in base64 (`openssl rand -base64 32`).
+- `DEVICE_KEY`: encrypts phone secrets.
+- `WEBHOOK_KEY`: encrypts webhook signing secrets.
+- `MFA_KEY`: encrypts authenticator secrets.
+- `ADMIN_TOKEN`: at least 32 characters. Only needed to create merchants.
+
+**API vars:**
+- `CHECKOUT_BASE_URL`: the host serving `/p/:id`.
+- `PUBLIC_API_URL`: the public API address. It goes into phone pairing links and is required, because behind the dashboard's service binding the API can't see its own public URL.
+- `DASHBOARD_URL`: used in invite links.
+
+**API resources:** D1 `autoconfirm` (apply `db/migrations` in order), the Durable Object class `LocationDO`, the queue `autoconfirm-webhooks`, and the KV namespace `RULES`.
+
+**Dashboard:** a service binding `API` → `autoconfirm-api`, so traffic stays internal and the real client IP is forwarded for login throttling. Build with `npm run build -w @autoconfirm/dashboard`.
+
+**First merchant:**
+1. `POST /admin/v1/merchants` creates the merchant and its keys.
+2. `POST /admin/v1/merchants/:id/invites {email, role: "owner"}` gives the owner a setup link.

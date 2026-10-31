@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createExecutionContext, createMessageBatch, env, getQueueResult, runDurableObjectAlarm } from 'cloudflare:test';
 import { verifyWebhook } from '@autoconfirm/core';
 import worker from '../src/index.ts';
+import { app } from '../src/app.ts';
 import { locationObjectName } from '../src/location-do.ts';
 import { call, createIntent, deviceCall, newLocation, newMerchant, pairDevice, sendSignal, setup } from './helpers.ts';
 
@@ -213,6 +214,14 @@ describe('device security', () => {
 		expect(replay.json.error.code).toBe('replayed_nonce');
 		await env.DB.prepare("UPDATE devices SET status = 'revoked' WHERE id = ?").bind(device.id).run();
 		expect((await deviceCall(device, 'POST', '/device/v1/heartbeat', body)).status).toBe(401);
+	});
+
+	it('refuses to make a pairing link with an internal address (PUBLIC_API_URL missing)', async () => {
+		const keys = await newMerchant();
+		const loc = await newLocation(keys.sk);
+		const res = await app.request(`https://api.internal/v1/locations/${loc}/pairing_codes`, { method: 'POST', headers: { authorization: `Bearer ${keys.sk}` } }, env);
+		expect(res.status).toBe(500);
+		expect(((await res.json()) as { error: { code: string } }).error.code).toBe('public_api_url_missing');
 	});
 
 	it('a pairing code works once', async () => {

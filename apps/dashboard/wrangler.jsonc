@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "autoconfirm-dashboard",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2026-08-01",
+  "assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" },
+  // The dashboard talks to the API Worker through a service binding (no public hop, real client IP forwarded).
+  "services": [{ "binding": "API", "service": "autoconfirm-api" }]
+  // Local dev without the binding: set API_URL (e.g. in .env) to http://127.0.0.1:8787.
+}

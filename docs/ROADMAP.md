@@ -49,7 +49,9 @@ Hosted page, widget, live WebSocket status, server-made QR codes and the Node cl
 - `@autoconfirm/node` client library: create intent, verify webhook, retrieve. About 10 lines per project.
 - Examples for Node, PHP and Python (see `examples/`).
 
-## Step 4: Dashboard (SvelteKit)
+## Step 4: Dashboard (SvelteKit) ✅ built
+Code in `apps/dashboard`. Logins use a password plus an authenticator-app code (required for owners and admins). Team invites, roles, payments, inbox, counters and phones with a pairing QR, developer keys and webhooks, reports with CSV, settings and an activity log are all built. It is tested in a real browser against the production build. Still to do: self-serve signup, password reset (an owner re-invites for now), and an inbox count badge.
+
 - Merchants, locations, devices (pairing QR), API keys.
 - Webhooks with logs and replay.
 - Signals inbox (unmatched, ambiguous, review).
