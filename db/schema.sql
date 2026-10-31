@@ -1,4 +1,6 @@
 -- UPI AutoConfirm: system-of-record schema (Cloudflare D1 / SQLite).
+-- This file is the full current schema. Applied changes live in db/migrations (additive only):
+-- 0001_initial.sql is this file as first released.
 -- Money: integer paise. Times: unix milliseconds. Every tenant-owned row has merchant_id.
 -- The live matching state (active intents, reserved amounts, recent fingerprints) also lives inside
 -- each location's Durable Object; D1 is the durable record and the source for dashboards/reports.
@@ -58,6 +60,7 @@ CREATE TABLE devices (
 	id TEXT PRIMARY KEY,                       -- dev_xxx
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
 	location_id TEXT NOT NULL REFERENCES locations(id),
+	livemode INTEGER NOT NULL,                 -- test devices (e.g. the simulator) only feed test intents
 	label TEXT NOT NULL,                       -- "Counter 1 phone"
 	secret_hash TEXT NOT NULL,                 -- server keeps sha256(secret) + encrypted secret for HMAC (see SECURITY.md)
 	secret_enc TEXT NOT NULL,                  -- AES-GCM(secret) with a key from Workers Secrets
@@ -77,6 +80,7 @@ CREATE TABLE pairing_codes (                 -- short-lived code shown as QR in 
 	code_hash TEXT PRIMARY KEY,
 	merchant_id TEXT NOT NULL,
 	location_id TEXT NOT NULL,
+	livemode INTEGER NOT NULL,
 	expires_at INTEGER NOT NULL,
 	used_at INTEGER
 );
@@ -128,6 +132,7 @@ CREATE TABLE signals (
 	merchant_id TEXT NOT NULL,
 	location_id TEXT NOT NULL,
 	device_id TEXT NOT NULL,
+	livemode INTEGER NOT NULL,
 	app TEXT NOT NULL,                         -- phonepe_business | paytm_business | gpay_business | bharatpe | bank_sms | …
 	amount INTEGER NOT NULL,
 	payer_name TEXT,                           -- truncated to first name + initial (data minimisation)
@@ -169,6 +174,7 @@ CREATE TABLE parser_rules (
 CREATE TABLE webhook_endpoints (
 	id TEXT PRIMARY KEY,
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
+	livemode INTEGER NOT NULL,                 -- receives only events of this mode
 	url TEXT NOT NULL,
 	events TEXT NOT NULL,                      -- JSON array
 	secret_enc TEXT NOT NULL,
@@ -179,6 +185,7 @@ CREATE TABLE webhook_endpoints (
 CREATE TABLE events (
 	id TEXT PRIMARY KEY,                       -- evt_xxx
 	merchant_id TEXT NOT NULL,
+	livemode INTEGER NOT NULL,
 	type TEXT NOT NULL,
 	object_id TEXT NOT NULL,
 	payload TEXT NOT NULL,
@@ -214,7 +221,7 @@ CREATE TABLE audit_log (
 );
 CREATE INDEX audit_merchant ON audit_log(merchant_id, at);
 
--- ---------- Replay protection for device + idempotency (also kept in the DO; D1 copy for restarts) ----------
+-- ---------- API idempotency (Idempotency-Key on POST). Device nonces live in each location's Durable Object storage. ----------
 CREATE TABLE idempotency (
 	merchant_id TEXT NOT NULL,
 	key TEXT NOT NULL,
@@ -223,14 +230,3 @@ CREATE TABLE idempotency (
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (merchant_id, key)
 );
-
--- Device request nonces (API.md §8): a nonce is rejected if seen again within 10 min.
--- Also kept in the DO; this copy survives DO restarts. Rows are deleted by the cleanup cron after expires_at.
-CREATE TABLE device_nonces (
-	device_id TEXT NOT NULL,
-	nonce TEXT NOT NULL,
-	merchant_id TEXT NOT NULL,
-	expires_at INTEGER NOT NULL,
-	PRIMARY KEY (device_id, nonce)
-);
-CREATE INDEX device_nonces_expiry ON device_nonces(expires_at);

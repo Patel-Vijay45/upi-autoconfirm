@@ -46,7 +46,8 @@
 - Auth: **per-device secret**, with every request signed by HMAC-SHA256, a timestamp and a nonce.
 
 ### 2.4 MerchantDO: the matching engine (Durable Object, one per location)
-- The object key is `merchant_id:location_id` (see §5).
+- The object key is `merchant_id:location_id:mode` (`live` or `test`, see §5), so test traffic can never touch live intents.
+- It writes to D1 through an **outbox** saved in the same storage transaction as its state. If D1 or the queue is briefly down, nothing is lost: an alarm retries every 5 s.
 - Holds the location's **active intents**, the **reserved amounts** (open intents plus those in their reuse cool-down) and the recent signal fingerprints, in its own SQLite storage.
 - **All matching for a location happens here, one at a time.** Durable Objects process one request at a time per object, so two signals can't grab the same intent and the same unique amount is never handed out twice.
 - Pushes live updates over WebSocket (hibernation API) to the merchant dashboard and checkout pages.
@@ -135,7 +136,7 @@ MerchantDO:
 
 ## 5. Multi-tenancy
 - Every row has a `merchant_id`. Every query is scoped by it, enforced in a single data-access layer and covered by tests.
-- MerchantDO id = `idFromName(merchant_id + ":" + location_id)`.
+- MerchantDO id = `idFromName(merchant_id + ":" + location_id + ":" + mode)`.
 - Keys, devices and webhooks belong to exactly one merchant.
 - **Sub-accounts / locations:** a merchant can have many **locations** (e.g. counters A–D, or branches), each with its own UPI ID and device(s). Matching is per **location**: the DO key is `merchant_id:location_id`, because each location's phone only sees its own UPI ID's payments.
 

@@ -209,7 +209,7 @@ export class LocationEngine {
 	private fingerprints = new Map<string, string>(); // fingerprint -> signal id
 
 	constructor(
-		readonly settings: Settings = DEFAULT_SETTINGS,
+		public settings: Settings = DEFAULT_SETTINGS,
 		private readonly rand: (maxExclusive: number) => number = randomInt,
 		state?: EngineState,
 	) {

@@ -2,7 +2,14 @@
 
 AutoConfirm is a **standalone, reusable service**. Any number of projects (online shops, counters, restaurants, booking sites) plug into it as separate merchants through the same API, webhooks and checkout page. No project is special-cased.
 
-## Step 1: Core service (API + matching engine)
+## Step 1: Core service (API + matching engine) ✅ built
+**Not done yet (small follow-ups):**
+- Rate limits (60 req/s per merchant, 10 signals/s per device).
+- Cron jobs: device-offline alerts (`device.offline` / `device.online`), clean-up of old idempotency rows, data retention.
+- Live status stream (WebSocket/SSE) for checkout pages. It comes with Step 3.
+- Key rotation and revoke endpoints (keys can be revoked in D1 for now).
+- Parser-rule publishing tool (rules are read from KV key `active`).
+
 - **Repo layout:** npm workspaces with `packages/core`, `apps/api` and `tools/`.
 - **`packages/core`:** pure TypeScript with no platform code.
   - Paise helpers: parse and format, no floats.

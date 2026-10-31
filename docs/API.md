@@ -23,6 +23,13 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 - **Rate limits:** 60 requests/s per merchant (burst 120). The `429` response includes `Retry-After`.
 - **Versioning:** the URL holds the major version (`/v1`). Fields are only ever **added** within v1. Ignore unknown fields.
 - **Pagination:** `?limit=50&starting_after=<id>`
+- **Test and live mode are fully separate.** `sk_test_` keys see only test intents, test phones (paired with a test key) and test webhooks. A test phone or the device simulator can never pay a live intent.
+
+## 2a. Locations and phones
+- `POST /v1/locations` with `{"name": "Counter 1", "upi_vpa": "shop@ybl", "upi_payee_name": "My Shop"}`. Each location is one UPI ID with its own phone(s).
+- `GET /v1/locations`
+- `POST /v1/locations/:id/pairing_codes` returns `{code, expires_at}` (valid 10 min, single use). Show it as a QR; the app sends it to `/device/v1/enroll`. The phone gets the key's mode (test or live).
+- A location needs at least one paired phone before it can take payments (`422 location_not_ready`).
 
 ## 3. Payment intents
 
@@ -40,7 +47,7 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
   "metadata": { "cart_id": "c_991" }
 }
 ```
-`location_id` is optional if the merchant has only one location.
+`location_id` is optional if the merchant has only one location. `expires_in` is in seconds (default 900); the maximum is the merchant's `max_intent_ttl` (default 1 h, up to 3 h).
 
 **201 Created**
 ```json
@@ -85,7 +92,7 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 `POST /v1/payment_intents/:id/mark_paid` with `{"note": "Verified on soundbox", "signal_id": "sig_…"}` (`signal_id` is optional and links an unmatched signal).
 
 ### Undo
-`POST /v1/payment_intents/:id/unmark_paid` with `{"reason": "…"}`. Allowed within 24 h. Audited, and fires `payment_intent.unpaid`.
+`POST /v1/payment_intents/:id/unmark_paid` with `{"reason": "…", "status": "pending"}` (or `"cancelled"`). Allowed within 24 h. Audited, and fires `payment_intent.unpaid`. The linked signal goes back to the inbox. Reopening fails with `409 amount_in_use` if the amount now belongs to another open intent; cancel instead.
 
 ### Customer claims payment (public)
 `POST /v1/public/payment_intents/:id/claim` (publishable key). It sets `customer_claimed_at`, which is shown to staff as "customer says paid". It never marks the intent paid.
@@ -180,7 +187,22 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
 | `GET /device/v1/parser_rules?version=` | Current parser rules (ETag-cached) |
 | `POST /device/v1/parse_failures` | Notification text that matched a payment app but couldn't be parsed. Redacted; only if the merchant opted in. |
 
-Signing: headers `X-Device-Id`, `X-Timestamp`, `X-Nonce`, and
+Signals body (max 50 per request, max 16 KB):
+```json
+{"signals": [{"app": "phonepe_business", "amount_paise": 93007, "payer_short": "Ramesh P", "reference": null,
+              "posted_at": 1793452051000, "notification_key_hash": "9f2c…", "rules_version": "2026-11-06.1"}]}
+```
+Each result is `{ok, signal_id, status, repeat}`; `repeat: true` means that exact upload was already received.
+
+Heartbeat body: `{"device_time": <phone time, unix ms>, "listener_connected": true, "app_version": "1.0.0", "queue_size": 0, "battery_optimized": false}`.
+
+Signing: headers `X-Device-Id`, `X-Timestamp` (unix **seconds**), `X-Nonce` (16–64 chars of `A-Za-z0-9_-`), and
 `X-Signature = hex(HMAC_SHA256(device_secret, method + "\n" + path + "\n" + timestamp + "\n" + nonce + "\n" + sha256_hex(body)))`.
 
 The server rejects requests that are more than 5 min skewed or that reuse a nonce within 10 min.
+
+## 9. Operator API (until the dashboard exists)
+`POST /admin/v1/merchants` with `Authorization: Bearer <ADMIN_TOKEN>` and `{"name": "…", "settings": {"auto_confirm_max": 500000}}`.
+- Returns the merchant id and its four keys (`sk_test_`, `pk_test_`, `sk_live_`, `pk_live_`). They are shown once.
+- Disabled when the `ADMIN_TOKEN` secret is not set (or is shorter than 32 characters).
+- Settings use the names in MATCHING.md §1.1, with times in seconds.

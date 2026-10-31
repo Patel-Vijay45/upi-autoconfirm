@@ -5,7 +5,7 @@
 
 Customers pay with Google Pay, PhonePe, Paytm, BHIM or any UPI app straight into the **merchant's own UPI ID**. The service tells the merchant's website **"order X is paid"** within seconds. There is no payment gateway, no MDR or percentage fee, and the money never passes through us.
 
-> **Status:** design done; core service (Step 1) in progress. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Status:** Step 1 (core service: API + matching engine) is built and tested. Next: the Android app. See [docs/ROADMAP.md](docs/ROADMAP.md).
 > AutoConfirm is a standalone, reusable service. Any project (online shop, counter, restaurant, bookings) plugs in as a merchant through the same API. See [docs/USE-CASES.md](docs/USE-CASES.md).
 
 ## How it works
@@ -40,6 +40,13 @@ Merchant website ◀──webhook── AutoConfirm service ── match ──�
 | Business restrictions | Some business categories refused | Any business that can get a business UPI ID |
 | Automatic confirmation | Yes | Yes (via the merchant's phone), plus manual fallback |
 | Refunds, cards, net banking | Yes | **No**: UPI only, refunds done by the merchant |
+
+## Run it locally
+```bash
+npm install
+npm test
+```
+To run the API and try it with the device simulator, see "Commands" in [CLAUDE.md](CLAUDE.md).
 
 ## Documents
 

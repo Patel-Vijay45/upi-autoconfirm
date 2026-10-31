@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "autoconfirm-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "d1_databases": [
+    // Replace database_id with the real id from `wrangler d1 create autoconfirm`.
+    { "binding": "DB", "database_name": "autoconfirm", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "../../db/migrations" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "LOCATION", "class_name": "LocationDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LocationDO"] }],
+  "queues": {
+    "producers": [{ "binding": "WEBHOOKS", "queue": "autoconfirm-webhooks" }],
+    "consumers": [{ "queue": "autoconfirm-webhooks", "max_batch_size": 10, "max_retries": 6 }]
+  },
+  "kv_namespaces": [
+    // Parser rules for the Android app. Replace id with `wrangler kv namespace create RULES`.
+    { "binding": "RULES", "id": "00000000000000000000000000000000" }
+  ],
+  "vars": {
+    "CHECKOUT_BASE_URL": "https://pay.example.com"
+  }
+  // Secrets (wrangler secret put): DEVICE_KEY, WEBHOOK_KEY (base64 32 bytes each), ADMIN_TOKEN.
+  // Local dev: put them in apps/api/.dev.vars (git-ignored).
+}

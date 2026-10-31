@@ -25,6 +25,7 @@ Why the cool-down matters: without it, ₹930.07 could go to the next ₹930 ord
 | `offset_mode` | `add_paise` | Alternatives: `subtract_paise` (customer pays less) or `none` (exact amount; only safe with 1 open payment per amount) |
 | `max_offset` | 99 | Lower = smaller extra, fewer parallel slots |
 | `intent_ttl` | 15 min | Shown to the customer as a countdown |
+| `max_intent_ttl` | 1 h | Longest `expires_in` allowed (up to 3 h, e.g. restaurant bills) |
 | `grace_window` | 30 min | Late notifications can still match recently expired intents |
 | `reuse_cooldown` | 60 min | How long a unique amount stays reserved after its intent closes (§1) |
 | `auto_confirm_max` | none | Above this amount a match needs one staff tap (§5). `null` = no limit |
