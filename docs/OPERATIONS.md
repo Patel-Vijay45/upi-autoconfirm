@@ -78,12 +78,12 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
   3. Run the e2e suite against staging, using the device simulator (TESTING.md).
   4. Manual approve, then production.
 - **Migrations:** additive only (new columns/tables). Remove things in a later release.
-- **Avoid peak hours:** no deploys 6 pm–11 pm IST, or during festival weeks (Diwali, Navratri) unless it's a fix.
+- **Avoid peak hours:** no deploys 6 pm–11 pm IST, or during merchants' peak seasons (festivals, sales) unless it's a fix.
 - **Rollback:** `wrangler rollback`, and the DB stays compatible because of additive migrations.
 
 ## 7. Support
-- **In-app help:** the "Phone checklist" plus short videos (Gujarati/Hindi/English) for pairing and battery settings.
-- WhatsApp support number for merchants; reply targets: 15 min in festival season, otherwise same day.
+- **In-app help:** the "Phone checklist" plus short videos (English, Hindi and regional languages) for pairing and battery settings.
+- WhatsApp support number for merchants; reply targets: 15 min in peak seasons, otherwise same day.
 - **Canned answers:** phone offline, amount mismatch, refund (AutoConfirm can't refund; the merchant refunds from their UPI app), and "is my money safe" (money goes straight to their bank, and AutoConfirm never touches it).
 
 ## 8. Data retention jobs (Cron, daily 03:30 IST)
@@ -91,3 +91,27 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 - Payer name: mask after 30 days (`R***h`).
 - `idempotency` rows: 24 h. `pairing_codes`: 10 min. `webhook_deliveries`: 30 days.
 - Expire `pending` intents past `expires_at` + grace, and emit `payment_intent.expired`.
+
+## 9. Deployment configuration
+Step-by-step setup: [DEPLOY.md](DEPLOY.md). `tools/deploy/deploy.mjs` creates the resources and secrets below automatically.
+
+Two Workers: `autoconfirm-api` (apps/api) and `autoconfirm-dashboard` (apps/dashboard).
+
+**API secrets** (`wrangler secret put`): each of the first three is 32 random bytes in base64 (`openssl rand -base64 32`).
+- `DEVICE_KEY`: encrypts phone secrets.
+- `WEBHOOK_KEY`: encrypts webhook signing secrets.
+- `MFA_KEY`: encrypts authenticator secrets.
+- `ADMIN_TOKEN`: at least 32 characters. Only needed to create merchants.
+
+**API vars:**
+- `CHECKOUT_BASE_URL`: the host serving `/p/:id`.
+- `PUBLIC_API_URL`: the public API address. It goes into phone pairing links and is required, because behind the dashboard's service binding the API can't see its own public URL.
+- `DASHBOARD_URL`: used in invite links.
+
+**API resources:** D1 `autoconfirm` (apply `db/migrations` in order), the Durable Object class `LocationDO`, the queue `autoconfirm-webhooks`, and the KV namespace `RULES`.
+
+**Dashboard:** a service binding `API` → `autoconfirm-api`, so traffic stays internal and the real client IP is forwarded for login throttling. Build with `npm run build -w @autoconfirm/dashboard`.
+
+**First merchant:**
+1. `POST /admin/v1/merchants` creates the merchant and its keys.
+2. `POST /admin/v1/merchants/:id/invites {email, role: "owner"}` gives the owner a setup link.

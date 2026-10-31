@@ -23,6 +23,15 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 - **Rate limits:** 60 requests/s per merchant (burst 120). The `429` response includes `Retry-After`.
 - **Versioning:** the URL holds the major version (`/v1`). Fields are only ever **added** within v1. Ignore unknown fields.
 - **Pagination:** `?limit=50&starting_after=<id>`
+- **Test and live mode are fully separate.** `sk_test_` keys see only test intents, test phones (paired with a test key) and test webhooks. A test phone or the device simulator can never pay a live intent.
+
+## 2a. Locations and phones
+- `POST /v1/locations` with `{"name": "Counter 1", "upi_vpa": "shop@ybl", "upi_payee_name": "My Shop"}`. Each location is one UPI ID with its own phone(s).
+- `GET /v1/locations`
+- `POST /v1/locations/:id/pairing_codes` returns `{code, pairing_link, expires_at}` (valid 10 min, single use).
+  - Show `pairing_link` (`autoconfirm://pair?api=…&code=pc_…`) as a QR. The phone's camera opens the app, which sends the code to `/device/v1/enroll`.
+  - The phone gets the key's mode (test or live). Set `PUBLIC_API_URL` if the API is reached through a different address than the request came in on.
+- A location needs at least one paired phone before it can take payments (`422 location_not_ready`).
 
 ## 3. Payment intents
 
@@ -32,15 +41,15 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 {
   "amount": 93000,
   "location_id": "loc_a",
-  "order_id": "A-31-7",
-  "description": "Shreenathji Crackers order A-31-7",
+  "order_id": "ORD-1042",
+  "description": "Order ORD-1042",
   "customer": { "name": "Ramesh Patel", "phone": "98XXXXXXXX" },
   "expires_in": 900,
   "return_url": "https://shop.example.com/order/abc123",
   "metadata": { "cart_id": "c_991" }
 }
 ```
-`location_id` is optional if the merchant has only one location.
+`location_id` is optional if the merchant has only one location. `expires_in` is in seconds (default 900); the maximum is the merchant's `max_intent_ttl` (default 1 h, up to 3 h).
 
 **201 Created**
 ```json
@@ -52,16 +61,16 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
   "unique_amount": 93007,
   "display_amount": "930.07",
   "currency": "INR",
-  "order_id": "A-31-7",
+  "order_id": "ORD-1042",
   "location_id": "loc_a",
   "expires_at": "2026-11-06T14:20:00Z",
   "checkout_url": "https://pay.<your-domain>/p/pi_7h3k2m9q4x",
   "upi": {
-    "uri": "upi://pay?pa=shop@ybl&pn=Shreenathji%20Crackers&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x",
+    "uri": "upi://pay?pa=shop@ybl&pn=My%20Shop&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x",
     "apps": {
-      "gpay": "gpay://upi/pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x",
-      "phonepe": "phonepe://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x",
-      "paytm": "paytmmp://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=A-31-7&tr=pi_7h3k2m9q4x"
+      "gpay": "gpay://upi/pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x",
+      "phonepe": "phonepe://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x",
+      "paytm": "paytmmp://pay?pa=shop@ybl&pn=…&am=930.07&cu=INR&tn=ORD-1042&tr=pi_7h3k2m9q4x"
     },
     "qr_svg": "<svg …>"
   },
@@ -85,7 +94,7 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 `POST /v1/payment_intents/:id/mark_paid` with `{"note": "Verified on soundbox", "signal_id": "sig_…"}` (`signal_id` is optional and links an unmatched signal).
 
 ### Undo
-`POST /v1/payment_intents/:id/unmark_paid` with `{"reason": "…"}`. Allowed within 24 h. Audited, and fires `payment_intent.unpaid`.
+`POST /v1/payment_intents/:id/unmark_paid` with `{"reason": "…", "status": "pending"}` (or `"cancelled"`). Allowed within 24 h. Audited, and fires `payment_intent.unpaid`. The linked signal goes back to the inbox. Reopening fails with `409 amount_in_use` if the amount now belongs to another open intent; cancel instead.
 
 ### Customer claims payment (public)
 `POST /v1/public/payment_intents/:id/claim` (publishable key). It sets `customer_claimed_at`, which is shown to staff as "customer says paid". It never marks the intent paid.
@@ -100,10 +109,24 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 Signal statuses: `matched`, `unmatched`, `ambiguous`, `review` (above `auto_confirm_max`, waiting for staff), `ignored`, `duplicate`.
 
 ## 5. Live status (for your own checkout UI)
-- **WebSocket:** `wss://pay.<your-domain>/v1/public/payment_intents/:id/live?key=pk_live_…` sends `{"type":"status","status":"paid","paid_at":"…"}`.
-- **Server-Sent Events:** `GET /v1/public/payment_intents/:id/events`, with the same messages.
-- **Polling fallback:** `GET /v1/public/payment_intents/:id/status` returns `{status, paid_at, expires_at}`. Poll every 3 s at most.
+All with the publishable key, and CORS-enabled for any origin:
+- **Checkout view:** `GET /v1/public/payment_intents/:id` returns what a checkout shows: `{id, status, amount, unique_amount, display_amount, payee_name, order_id, expires_at, paid_at, return_url, upi: {uri, apps}, qr_svg}`.
+- **WebSocket:** `wss://<api>/v1/public/payment_intents/:id/live?key=pk_live_…`.
+  - It sends the current status at once, then `{"type":"status","status":"paid","paid_at":"…","expires_at":"…"}` on every change, pushed the moment the phone reports the payment.
+  - Browsers can't set headers on WebSockets, which is why the key goes in the query.
+  - Up to 10 connections per intent. Send `ping` to get `pong`.
+- **Polling fallback:** `GET /v1/public/payment_intents/:id/status` returns `{status, display_amount, paid_at, expires_at}`. Poll every 3 s at most.
 - Public responses never include customer personal data or the payer name.
+
+## 5a. Hosted checkout page
+`checkout_url` (`https://<checkout host>/p/:id`) is a ready-made payment page. Send the customer there for zero front-end work.
+- **What it shows:** the amount in large digits, Google Pay / PhonePe / Paytm / other-app buttons, the QR code (shown first on desktops), a countdown, "I have paid" and a live status.
+- **When paid:** it shows "Payment received ✓" and returns the customer to `return_url`.
+- **Language:** `?lang=en|hi|gu`, or the browser language.
+- **Works without JavaScript:** the amount and pay buttons are in the HTML.
+- **Endpoints:** the page uses `/p/:id/status`, `/p/:id/claim` and `wss://…/p/:id/live`. The unguessable intent id is the only credential, and nothing personal is returned.
+- **Headers:** strict CSP (nonce scripts, `frame-ancestors 'none'`), `no-store` and `no-referrer`.
+- **Hosting:** the page is served by the API Worker. Point `CHECKOUT_BASE_URL` at the host that serves it (the API host itself, or a `pay.` domain routed to the same Worker).
 
 ## 6. Webhooks
 Configure endpoints in the dashboard or with `POST /v1/webhook_endpoints {url, events[]}`. HTTPS only.
@@ -129,7 +152,7 @@ Configure endpoints in the dashboard or with `POST /v1/webhook_endpoints {url, e
   "livemode": true,
   "data": {
     "object": { "id": "pi_7h3k2m9q4x", "status": "paid", "amount": 93000, "unique_amount": 93007,
-                "order_id": "A-31-7", "paid_at": "2026-11-06T14:07:30Z",
+                "order_id": "ORD-1042", "paid_at": "2026-11-06T14:07:30Z",
                 "match": { "source": "auto", "signal_id": "sig_…", "app": "phonepe_business", "late": false } }
   }
 }
@@ -158,7 +181,7 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
     AutoConfirm.open({
       key: 'pk_live_xxx',
       intent: intentId,
-      lang: 'gu',                 // gu | hi | en
+      lang: 'en',                 // en | hi | gu (more later)
       onPaid: (pi) => location.href = '/thank-you?order=' + pi.order_id,
       onExpired: () => alert('Time over. Please try again.'),
       onClose: () => {}
@@ -166,8 +189,10 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
   };
 </script>
 ```
-- The widget is under 15 KB gzipped with no dependencies.
-- It detects Android, iPhone or desktop. It shows the app buttons on phones and a QR on desktop.
+- The widget is about 5 KB gzipped with no dependencies (the build fails above 15 KB). Load it from `https://<api>/v1/checkout.js`.
+- It renders in a shadow root: a bottom sheet on phones and a dialog on desktop. On desktop the QR comes first, and the app buttons are never hidden.
+- If your site has a Content-Security-Policy, allow `script-src` and `connect-src` for the API host (including `wss:`), and `style-src 'unsafe-inline'` for the widget's own styles.
+- `AutoConfirm.open()` returns `{close()}`. `onPaid(pi)` gets `{id, status, order_id, paid_at}`.
 - It shows a live status, an "I have paid" button, and the countdown.
 - Your server **must still confirm** with a webhook or `GET /v1/payment_intents/:id` before fulfilling. `onPaid` is just for the UI.
 
@@ -180,7 +205,59 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
 | `GET /device/v1/parser_rules?version=` | Current parser rules (ETag-cached) |
 | `POST /device/v1/parse_failures` | Notification text that matched a payment app but couldn't be parsed. Redacted; only if the merchant opted in. |
 
-Signing: headers `X-Device-Id`, `X-Timestamp`, `X-Nonce`, and
+Signals body (max 50 per request, max 16 KB):
+```json
+{"signals": [{"app": "phonepe_business", "amount_paise": 93007, "payer_short": "Ramesh P", "reference": null,
+              "posted_at": 1793452051000, "notification_key_hash": "9f2c…", "rules_version": "2026-11-06.1"}]}
+```
+Each result is `{ok, signal_id, status, repeat}`; `repeat: true` means that exact upload was already received.
+
+Heartbeat body: `{"device_time": <phone time, unix ms>, "listener_connected": true, "app_version": "1.0.0", "queue_size": 0, "battery_optimized": false}`.
+
+Signing: headers `X-Device-Id`, `X-Timestamp` (unix **seconds**), `X-Nonce` (16–64 chars of `A-Za-z0-9_-`), and
 `X-Signature = hex(HMAC_SHA256(device_secret, method + "\n" + path + "\n" + timestamp + "\n" + nonce + "\n" + sha256_hex(body)))`.
 
 The server rejects requests that are more than 5 min skewed or that reuse a nonce within 10 min.
+
+## 9. Operator API (until the dashboard exists)
+`POST /admin/v1/merchants` with `Authorization: Bearer <ADMIN_TOKEN>` and `{"name": "…", "settings": {"auto_confirm_max": 500000}}`.
+- Returns the merchant id and its four keys (`sk_test_`, `pk_test_`, `sk_live_`, `pk_live_`). They are shown once.
+- Disabled when the `ADMIN_TOKEN` secret is not set (or is shorter than 32 characters).
+- Settings use the names in MATCHING.md §1.1, with times in seconds.
+
+## 10. Dashboard API
+The dashboard (`apps/dashboard`) uses these. They also work for your own tools.
+
+**Logins:**
+- `POST /dashboard/v1/login` with `{email, password, otp?}` returns `{token: "ses_…", expires_at, user, merchant}`.
+  - The error code is `otp_required` until the 6-digit code is sent. Owners and admins must use one.
+  - 5 failures per email lock the email for 15 min (`429`).
+- Send the token as `Authorization: Bearer ses_…`, plus `AutoConfirm-Mode: live|test` to choose which data to see. Sessions last 12 hours.
+- `POST /dashboard/v1/logout`. `GET /dashboard/v1/me`.
+
+**Invites:**
+- Create one with `POST /v1/users/invites` `{email, role}` (owner/admin), or `POST /admin/v1/merchants/:id/invites` (operator).
+- The response has a one-time `token` (72 h). `GET /dashboard/v1/invites/:token` shows the authenticator QR. `POST` it with `{password, otp?}` to finish and log in.
+
+**Roles:**
+| | owner | admin | staff | developer | secret key |
+|---|---|---|---|---|---|
+| See payments, inbox, phones, reports | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Mark paid, cancel, undo, match inbox | ✓ | ✓ | ✓ | | ✓ |
+| Counters, pairing, remove phones | ✓ | ✓ | | | ✓ |
+| Webhooks, events, deliveries | ✓ | ✓ | | ✓ | ✓ |
+| API keys (create/revoke) | ✓ | ✓ | | test only | |
+| Settings (change), team, activity log | ✓ | ✓ | | | |
+
+**Endpoints:**
+- Team: `GET /v1/users`, `POST /v1/users/:id/deactivate`.
+- Keys: `GET /v1/api_keys`, `POST /v1/api_keys {kind}` (the full key is returned once), `POST /v1/api_keys/:id/revoke`.
+- Phones and counters: `GET /v1/devices?location_id=`, `POST /v1/devices/:id/revoke`, `POST /v1/locations/:id {name?, active?}`.
+- Webhooks: `POST /v1/webhook_endpoints/:id/enable|disable`, `GET /v1/webhook_deliveries?endpoint_id=`, `GET /v1/events?type=`, `POST /v1/events/:id/resend`.
+- Reports (IST days, up to 92 at a time):
+  - `GET /v1/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+  - `GET /v1/reports/payments.csv?from&to`. Cells that start with `= + - @` are prefixed with `'` so spreadsheets don't run them as formulas.
+- Settings: `GET /v1/settings`, and `POST /v1/settings {auto_confirm_max, intent_ttl, max_intent_ttl, grace_window, reuse_cooldown, max_offset}` (session, owner/admin; times in seconds).
+- Activity log: `GET /v1/audit_log`.
+- Inbox help: `GET /v1/signals/:id` includes `suggestions`, the closest open orders by amount and time.
+

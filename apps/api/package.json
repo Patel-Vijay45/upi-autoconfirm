@@ -1,0 +1,23 @@
+{
+  "name": "@autoconfirm/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest --run",
+    "typecheck": "tsc -p .",
+    "db:migrate:local": "wrangler d1 migrations apply autoconfirm --local"
+  },
+  "dependencies": {
+    "@autoconfirm/core": "0.1.0",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7",
+    "@autoconfirm/checkout": "0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.11",
+    "@cloudflare/workers-types": "^5.20261031.1",
+    "wrangler": "^4.156.0"
+  }
+}

@@ -51,7 +51,7 @@ We process personal data: customer names, phones, payer names and amounts.
 - **Acceptable use:**
   - Lawful goods and services only.
   - No use for third-party trust scenarios (escrow, marketplaces).
-  - The merchant must follow their own licence conditions (for example, firework sellers' local licence rules).
+  - The merchant must follow their own licence conditions (for example, local trade licences).
 - **Data Processing Agreement** (DPDP), SLA and support hours, pricing and cancellation.
 
 ## 7. Tax and business

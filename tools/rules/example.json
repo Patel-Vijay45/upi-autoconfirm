@@ -1,0 +1,22 @@
+{
+  "version": "2026-11-01.1",
+  "_note": "TEMPLATE ONLY. Package names and wording must be verified on real phones before use (ROADMAP Step 2).",
+  "apps": [
+    {
+      "id": "phonepe_business",
+      "packages": ["com.phonepe.app.business"],
+      "incoming": [
+        { "field": "any", "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z .]+)", "amount": 1, "payer": 2 }
+      ],
+      "ignore": ["(?i)paid to", "(?i)cashback", "(?i)refund", "(?i)request", "(?i)failed"]
+    },
+    {
+      "id": "bank_sms",
+      "packages": ["com.google.android.apps.messaging"],
+      "incoming": [
+        { "field": "any", "regex": "(?i)Rs\\.?\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+credited.*?VPA\\s+([\\w.\\-]+@[\\w.\\-]+)(?:.*?Ref(?:\\s?No)?[:.\\s]*([0-9]{6,22}))?", "amount": 1, "reference": 3 }
+      ],
+      "ignore": ["(?i)debited", "(?i)OTP"]
+    }
+  ]
+}

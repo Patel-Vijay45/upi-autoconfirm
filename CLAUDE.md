@@ -48,6 +48,7 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
   - p95 signal → paid < 3 s.
   - `checkout.js` under 15 KB gzipped. The hosted checkout page has no framework and no heavy libraries.
 - **Cost:** stay inside Cloudflare free/cheap tiers. Ask before adding paid services.
+  - It runs on the Workers Free plan: 10 ms CPU per request, so heavy CPU work (e.g. password hashing) goes in a Durable Object, which gets 30 s.
 - **Migrations:** additive only. Add new numbered files and never edit applied ones.
 
 ## Working style
@@ -55,9 +56,27 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
 - Commit and push before finishing; cloud containers are temporary.
 - Work on a feature branch, not directly on the default branch.
 
-## Commands (once the code exists)
+## Code layout
+- `packages/core`: pure TypeScript (engine, money, signatures, UPI links). No platform code. Most safety logic lives here.
+- `apps/api`: Cloudflare Worker (Hono routes, `LocationDO` with live WebSockets, webhook queue consumer, hosted checkout `/p/:id`).
+- `apps/checkout`: browser code for the hosted page and `checkout.js`, plus the shared template, CSS and i18n. `npm run build` writes `apps/api/src/generated/checkout-assets.ts` (commit it; `npm test` fails if stale or over 15 KB).
+- `packages/node`: `@autoconfirm/node` server client (no dependencies).
+- `apps/dashboard`: SvelteKit 2 (Svelte 5) merchant dashboard on Cloudflare. A thin UI: its server calls the API with the user's session (service binding `API` in production, `API_URL` in dev). All access rules live in the API.
+  - Use `defaultValue` (not `value`) on form inputs, so text typed before hydration isn't wiped.
+- `db/schema.sql` is the full schema; `db/migrations/` holds applied migrations (add new numbered files only).
+- `apps/android`: Kotlin phone app (Gradle project, not part of npm workspaces). Pure logic in `parse/` and `net/` is unit-tested on the JVM.
+- `tools/device-sim.mjs`: signs and sends signals like the phone app. `tools/rules/example.json`: parser-rules template.
+
+## Commands
 - Install: `npm install`
-- Dev: `npm run dev` (wrangler dev)
-- Tests: `npx vitest --run` (unit + property), `npx playwright test` (e2e)
-- Device simulator: `node tools/device-sim.mjs --location loc_test --amount 1.03 --app gpay`
-- Deploy: GitHub Actions → staging → manual approval → production
+- Dev: `npm run dev` (wrangler dev; needs `apps/api/.dev.vars` and `npx wrangler d1 migrations apply autoconfirm --local` in `apps/api`)
+- Tests: `npm test` (core, node client, checkout asset check, API tests in the Workers runtime). Typecheck: `npm run typecheck`
+- Dashboard dev: `cd apps/dashboard && API_URL=http://127.0.0.1:8787 npx vite dev` (port 5173). Type check: `npm run check -w @autoconfirm/dashboard`
+- Browser e2e: start the API (`wrangler dev`) and the dashboard, then `npm run test:e2e` (Playwright Chromium). Dashboard e2e uses E2E_DASH (default http://127.0.0.1:5173).
+- Device simulator: `node tools/device-sim.mjs pair --code pc_… --api http://localhost:8787`, then `node tools/device-sim.mjs signal --amount 930.07`
+- Android: `cd apps/android && ./gradlew testDebugUnitTest assembleDebug` (needs JDK 17+ and Android SDK 36)
+- Deploy: see docs/DEPLOY.md. Push to `main` deploys staging; "Run workflow" deploys staging then production (`tools/deploy/deploy.mjs`). Dry run: `node tools/deploy/deploy.mjs --env production --dry-run`
+- Operator: `node tools/admin.mjs create-merchant --api <url> --name … --owner <email>` (needs AUTOCONFIRM_ADMIN_TOKEN)
+
+## Scope
+- This is a generic, reusable service. Never add project-specific code, names or special cases. Every project is just a merchant using the public API (see docs/USE-CASES.md).

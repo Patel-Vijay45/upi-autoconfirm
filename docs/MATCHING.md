@@ -25,6 +25,7 @@ Why the cool-down matters: without it, ₹930.07 could go to the next ₹930 ord
 | `offset_mode` | `add_paise` | Alternatives: `subtract_paise` (customer pays less) or `none` (exact amount; only safe with 1 open payment per amount) |
 | `max_offset` | 99 | Lower = smaller extra, fewer parallel slots |
 | `intent_ttl` | 15 min | Shown to the customer as a countdown |
+| `max_intent_ttl` | 1 h | Longest `expires_in` allowed (up to 3 h, e.g. restaurant bills) |
 | `grace_window` | 30 min | Late notifications can still match recently expired intents |
 | `reuse_cooldown` | 60 min | How long a unique amount stays reserved after its intent closes (§1) |
 | `auto_confirm_max` | none | Above this amount a match needs one staff tap (§5). `null` = no limit |
@@ -107,7 +108,7 @@ Notes:
 
 | Case | Behaviour |
 |---|---|
-| Customer pays **₹930** instead of ₹930.07 (edited amount) | No match, so it goes to the unmatched inbox. The merchant assigns it in one tap ("₹930.00 from Ramesh → order A-31-7?"). The dashboard suggests the closest pending intent by amount and time. |
+| Customer pays **₹930** instead of ₹930.07 (edited amount) | No match, so it goes to the unmatched inbox. The merchant assigns it in one tap ("₹930.00 from Ramesh → order ORD-1042?"). The dashboard suggests the closest pending intent by amount and time. |
 | Customer pays **twice** | The amount is still reserved (cool-down), so the second signal finds no open intent and is unmatched. The inbox shows "possible duplicate payment" and the merchant refunds manually. |
 | Customer taps **"repeat payment"** in their UPI app hours later | If within the cool-down: unmatched, as above. After it: the amount may belong to a new order, but only an open order with the same base amount can collide, and with random offsets the chance is about 1 in 99 for each such order. Visible in the inbox; reversible with "undo". |
 | Customer pays **someone else's** unique amount by chance | Only happens if they type it by hand. That intent gets marked paid, and the real customer's payment later arrives unmatched. Rare; both visible in the inbox; reversible with "undo". |
@@ -127,7 +128,7 @@ Notes:
 - **Staff confirm above ₹X** (`auto_confirm_max`): this is the main protection if a phone's device secret is ever stolen (SECURITY T3).
   - A signal that would auto-match an intent above the limit is stored with status `review`, linked to that intent as a suggestion.
   - The intent stays `pending`, so its amount stays reserved, and the customer sees "Checking payment…".
-  - The inbox and the `signal.review_required` webhook show "₹4,500.12 from Ramesh P → order A-31-9? Confirm / Reject".
+  - The inbox and the `signal.review_required` webhook show "₹4,500.12 from Ramesh P → order ORD-1043? Confirm / Reject".
   - **Confirm** uses the normal assign flow: the intent becomes `paid` (source `manual`, audited, `late` if it expired meanwhile).
   - **Reject** sets the signal to `unmatched`, and the intent carries on as normal.
   - There is no extra intent status, so webhooks, fulfilment rules and the state machine stay the same.

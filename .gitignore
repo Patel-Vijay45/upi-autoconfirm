@@ -4,3 +4,6 @@ __pycache__/
 .env
 .dev.vars
 .wrangler/
+.device-sim.json
+.dev.vars
+*.log

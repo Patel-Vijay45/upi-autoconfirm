@@ -28,12 +28,12 @@
 			const { intentId } = await fetch('/api/create-upi-payment', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ orderId: 'A-31-7' })
+				body: JSON.stringify({ orderId: 'ORD-1042' })
 			}).then((r) => r.json());
 			AutoConfirm.open({
 				key: 'pk_test_xxx',
 				intent: intentId,
-				lang: 'gu',
+				lang: 'en',
 				onPaid: (pi) => (location.href = '/thank-you?order=' + encodeURIComponent(pi.order_id)),
 				onExpired: () => alert('Time over. Please try again.')
 			});
@@ -62,7 +62,7 @@
 			const pi = await fetch('/api/create-upi-payment?full=1', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ orderId: 'A-31-7' })
+				body: JSON.stringify({ orderId: 'ORD-1042' })
 			}).then((r) => r.json());
 			document.getElementById('own-ui').hidden = false;
 			document.getElementById('amt').textContent = pi.display_amount;
@@ -88,7 +88,7 @@
 				}).then((r) => r.json());
 				if (s.status === 'paid') {
 					status.textContent = 'Payment received ✓';
-					return (location.href = '/thank-you?order=A-31-7');
+					return (location.href = '/thank-you?order=ORD-1042');
 				}
 				if (s.status === 'expired') return (status.textContent = 'Not confirmed. If money was deducted, show this screen at the counter.');
 				setTimeout(check, 3000);

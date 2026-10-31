@@ -1,4 +1,6 @@
 -- UPI AutoConfirm: system-of-record schema (Cloudflare D1 / SQLite).
+-- This file is the full current schema. Applied changes live in db/migrations (additive only):
+-- 0001_initial.sql is this file as first released; later numbered files add to it (and are appended below).
 -- Money: integer paise. Times: unix milliseconds. Every tenant-owned row has merchant_id.
 -- The live matching state (active intents, reserved amounts, recent fingerprints) also lives inside
 -- each location's Durable Object; D1 is the durable record and the source for dashboards/reports.
@@ -16,7 +18,7 @@ CREATE TABLE merchants (
 	created_at INTEGER NOT NULL
 );
 
-CREATE TABLE locations (                     -- a shop/stall/counter with its own UPI ID and phone(s)
+CREATE TABLE locations (                     -- a shop/branch/counter with its own UPI ID and phone(s)
 	id TEXT PRIMARY KEY,                       -- loc_xxx
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
 	name TEXT NOT NULL,
@@ -33,7 +35,7 @@ CREATE TABLE users (                         -- dashboard logins
 	email TEXT NOT NULL UNIQUE COLLATE NOCASE,
 	password_hash TEXT,                        -- or passwordless / OAuth
 	role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'staff', 'developer')),
-	mfa_secret TEXT,                           -- TOTP, required for owner/admin
+	mfa_secret TEXT,                           -- TOTP secret, AES-GCM encrypted (MFA_KEY); required for owner/admin
 	active INTEGER NOT NULL DEFAULT 1,
 	created_at INTEGER NOT NULL,
 	last_login INTEGER
@@ -58,7 +60,8 @@ CREATE TABLE devices (
 	id TEXT PRIMARY KEY,                       -- dev_xxx
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
 	location_id TEXT NOT NULL REFERENCES locations(id),
-	label TEXT NOT NULL,                       -- "Stall A counter phone"
+	livemode INTEGER NOT NULL,                 -- test devices (e.g. the simulator) only feed test intents
+	label TEXT NOT NULL,                       -- "Counter 1 phone"
 	secret_hash TEXT NOT NULL,                 -- server keeps sha256(secret) + encrypted secret for HMAC (see SECURITY.md)
 	secret_enc TEXT NOT NULL,                  -- AES-GCM(secret) with a key from Workers Secrets
 	model TEXT, android_version TEXT, app_version TEXT,
@@ -77,6 +80,7 @@ CREATE TABLE pairing_codes (                 -- short-lived code shown as QR in 
 	code_hash TEXT PRIMARY KEY,
 	merchant_id TEXT NOT NULL,
 	location_id TEXT NOT NULL,
+	livemode INTEGER NOT NULL,
 	expires_at INTEGER NOT NULL,
 	used_at INTEGER
 );
@@ -128,6 +132,7 @@ CREATE TABLE signals (
 	merchant_id TEXT NOT NULL,
 	location_id TEXT NOT NULL,
 	device_id TEXT NOT NULL,
+	livemode INTEGER NOT NULL,
 	app TEXT NOT NULL,                         -- phonepe_business | paytm_business | gpay_business | bharatpe | bank_sms | …
 	amount INTEGER NOT NULL,
 	payer_name TEXT,                           -- truncated to first name + initial (data minimisation)
@@ -169,6 +174,7 @@ CREATE TABLE parser_rules (
 CREATE TABLE webhook_endpoints (
 	id TEXT PRIMARY KEY,
 	merchant_id TEXT NOT NULL REFERENCES merchants(id),
+	livemode INTEGER NOT NULL,                 -- receives only events of this mode
 	url TEXT NOT NULL,
 	events TEXT NOT NULL,                      -- JSON array
 	secret_enc TEXT NOT NULL,
@@ -179,6 +185,7 @@ CREATE TABLE webhook_endpoints (
 CREATE TABLE events (
 	id TEXT PRIMARY KEY,                       -- evt_xxx
 	merchant_id TEXT NOT NULL,
+	livemode INTEGER NOT NULL,
 	type TEXT NOT NULL,
 	object_id TEXT NOT NULL,
 	payload TEXT NOT NULL,
@@ -214,7 +221,7 @@ CREATE TABLE audit_log (
 );
 CREATE INDEX audit_merchant ON audit_log(merchant_id, at);
 
--- ---------- Replay protection for device + idempotency (also kept in the DO; D1 copy for restarts) ----------
+-- ---------- API idempotency (Idempotency-Key on POST). Device nonces live in each location's Durable Object storage. ----------
 CREATE TABLE idempotency (
 	merchant_id TEXT NOT NULL,
 	key TEXT NOT NULL,
@@ -224,13 +231,36 @@ CREATE TABLE idempotency (
 	PRIMARY KEY (merchant_id, key)
 );
 
--- Device request nonces (API.md §8): a nonce is rejected if seen again within 10 min.
--- Also kept in the DO; this copy survives DO restarts. Rows are deleted by the cleanup cron after expires_at.
-CREATE TABLE device_nonces (
-	device_id TEXT NOT NULL,
-	nonce TEXT NOT NULL,
+-- ===== Added by 0002_dashboard.sql =====
+-- Last TOTP time-step used per user, so a code can't be replayed.
+ALTER TABLE users ADD COLUMN mfa_last_step INTEGER;
+
+-- Login sessions for the dashboard. Only a hash of the token is stored.
+CREATE TABLE sessions (
+	token_hash TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL REFERENCES users(id),
 	merchant_id TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
 	expires_at INTEGER NOT NULL,
-	PRIMARY KEY (device_id, nonce)
+	last_seen_at INTEGER NOT NULL,
+	ip TEXT
 );
-CREATE INDEX device_nonces_expiry ON device_nonces(expires_at);
+CREATE INDEX sessions_user ON sessions(user_id);
+CREATE INDEX sessions_expiry ON sessions(expires_at);
+
+-- One-time setup links for new users (set a password, enrol an authenticator app).
+CREATE TABLE user_invites (
+	token_hash TEXT PRIMARY KEY,
+	merchant_id TEXT NOT NULL,
+	user_id TEXT NOT NULL REFERENCES users(id),
+	mfa_secret_enc TEXT NOT NULL,             -- TOTP secret offered on the setup page, AES-GCM encrypted
+	expires_at INTEGER NOT NULL,
+	used_at INTEGER
+);
+
+-- Failed-login counters (per email and per IP), for throttling.
+CREATE TABLE login_throttle (
+	key TEXT PRIMARY KEY,
+	failures INTEGER NOT NULL,
+	window_start INTEGER NOT NULL
+);
