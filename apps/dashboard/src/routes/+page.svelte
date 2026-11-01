@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { inr, when, STATUS_LABEL } from '$lib/format.ts';
-	let { data } = $props();
+	let { data, form } = $props();
+	let showNew = $state(false);
 	const tabs = [['', 'All'], ['pending', 'Waiting'], ['paid', 'Paid'], ['expired', 'Expired'], ['cancelled', 'Cancelled']];
 	const href = (status: string) => {
 		const q = new URLSearchParams();
@@ -35,6 +36,20 @@
 	{/if}
 </div>
 
+<details class="card" open={showNew || !!form?.error} ontoggle={(e) => (showNew = (e.currentTarget as HTMLDetailsElement).open)}>
+	<summary><strong>+ New payment</strong> <span class="small muted">(customer pays at the counter)</span></summary>
+	<form method="POST" action="?/create" class="row" style="margin-top:.75rem">
+		<input type="hidden" name="key" value={data.newKey} />
+		<label class="grow"><span>Amount (₹)</span><input name="amount" inputmode="decimal" required placeholder="250" defaultValue={form?.amount ?? ''} /></label>
+		<label class="grow"><span>Order or note (optional)</span><input name="note" maxlength="64" placeholder="Table 4" defaultValue={form?.note ?? ''} /></label>
+		{#if data.locations.length > 1}
+			<label><span>Counter</span><select name="location_id">{#each data.locations as l}<option value={l.id}>{l.name}</option>{/each}</select></label>
+		{/if}
+		<button>Create and show QR</button>
+	</form>
+	{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
+</details>
+
 <nav class="tabs" aria-label="Status">
 	{#each tabs as [s, label]}<a href={href(s)} aria-current={data.status === s ? 'page' : undefined}>{label}</a>{/each}
 </nav>
@@ -57,6 +72,7 @@
 {/if}
 
 <style>
+	summary { cursor: pointer; }
 	a.item { text-decoration: none; color: inherit; }
 	a.item:hover .amount { color: var(--accent); }
 </style>

@@ -13,6 +13,12 @@ export function inr(paise: number | null | undefined): string {
 	return `${neg ? '-' : ''}₹${grouped}.${frac}`;
 }
 
+/** "930", "930.5", "1,250.50", "₹ 99" -> integer paise (no floats). Null if not an amount. */
+export function parseRupees(input: string): number | null {
+	const m = /^(\d{1,7})(?:\.(\d{1,2}))?$/.exec(input.trim().replace(/[₹,\s]/g, ''));
+	return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : null;
+}
+
 const dt = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 export function when(iso: string | null | undefined): string {

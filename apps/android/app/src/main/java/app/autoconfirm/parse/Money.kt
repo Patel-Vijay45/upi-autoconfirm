@@ -20,9 +20,12 @@ object Money {
 
 /** Data minimisation: "RAMESH PATEL" -> "Ramesh P". Same rule as the server. */
 object Payer {
+    private val HONORIFICS = setOf("mr", "mrs", "ms", "miss", "dr", "shri", "sri", "smt", "kumari", "km")
+
     fun short(name: String?): String? {
         if (name.isNullOrBlank()) return null
-        val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        // Titles like "Mr." would otherwise become the first name ("Mr. V").
+        val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.dropWhile { it.trimEnd('.').lowercase() in HONORIFICS }
         if (words.isEmpty()) return null
         val first = words[0].take(20).lowercase().replaceFirstChar { it.uppercase() }
         val initial = words.getOrNull(1)?.firstOrNull()?.uppercaseChar()

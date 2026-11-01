@@ -1,10 +1,19 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import { inr, when, STATUS_LABEL, can } from '$lib/format.ts';
 	let { data, form } = $props();
 	const pi = $derived(data.pi);
 	const role = $derived(data.me.user.role);
 	const open = $derived(pi.status === 'pending' || pi.status === 'expired');
 	const undoable = $derived(pi.status === 'paid' && pi.paid_at && Date.now() - Date.parse(pi.paid_at) < 24 * 3600_000);
+	// While waiting, re-check every 3 s so the counter screen turns green by itself.
+	$effect(() => {
+		if (pi.status !== 'pending') return;
+		const t = setInterval(() => {
+			if (document.visibilityState === 'visible') void invalidateAll();
+		}, 3000);
+		return () => clearInterval(t);
+	});
 	const confirm = (msg: string) => (e: SubmitEvent) => {
 		if (!window.confirm(msg)) e.preventDefault();
 	};
@@ -13,6 +22,21 @@
 <svelte:head><title>{inr(pi.unique_amount)} · AutoConfirm</title></svelte:head>
 
 <p><a href="/">← Payments</a></p>
+{#if pi.status === 'pending'}
+	<div class="card center" data-testid="pay-qr">
+		<div class="muted small">Ask the customer to scan and pay exactly</div>
+		<div class="amount big">{inr(pi.unique_amount)}</div>
+		<div class="qr">{@html pi.upi.qr_svg}</div>
+		<p class="small"><a href={pi.checkout_url} target="_blank" rel="noopener">Open the customer payment page</a> (to send as a link)</p>
+		<p class="small muted">This page turns green by itself when the phone confirms the payment.</p>
+	</div>
+{:else if pi.status === 'paid'}
+	<div class="card center paid" data-testid="paid-banner" role="status">
+		<div class="tick">✓ Paid</div>
+		<div class="amount big">{inr(pi.match?.received_amount ?? pi.unique_amount)}</div>
+		<div class="small muted">{pi.match?.source === 'auto' ? 'Confirmed automatically by the phone' : 'Marked paid by staff'} · {when(pi.paid_at)}</div>
+	</div>
+{/if}
 <div class="card">
 	<div class="row spread">
 		<div>
@@ -75,6 +99,9 @@
 {/if}
 
 <style>
+	.center { text-align: center; }
+	.paid { border: 3px solid var(--accent); background: var(--accent-soft); }
+	.tick { font-size: 2rem; font-weight: 800; color: var(--accent); }
 	th { width: 9rem; }
 	.warn { color: var(--warn); }
 </style>

@@ -118,10 +118,13 @@ async function intentResponse(c: Ctx, row: IntentRow) {
 	return presentIntent(row, loc, c.env.CHECKOUT_BASE_URL, Date.now(), matched);
 }
 
+const HONORIFICS = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'shri', 'sri', 'smt', 'kumari', 'km']);
+
 /** "Ramesh Patel" -> "Ramesh P". Data minimisation is also enforced on the device. */
 export function shortPayer(name: string | null | undefined): string | null {
 	if (!name) return null;
 	const words = name.trim().split(/\s+/).filter(Boolean);
+	while (words.length > 1 && HONORIFICS.has(words[0]!.replace(/\.$/, '').toLowerCase())) words.shift(); // "Mr. Ravi Shah" -> "Ravi S"
 	if (words.length === 0) return null;
 	const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
 	const first = cap(words[0]!.slice(0, 20));
