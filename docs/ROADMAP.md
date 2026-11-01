@@ -72,7 +72,7 @@ See [USE-CASES.md](USE-CASES.md).
 - Unique QR printed on bills (POS / thermal printer).
 - Longer expiry per merchant. ✅ (setting `max_intent_ttl`, up to 3 h)
 - Tip buttons and split bills.
-- Table or counter QR stickers that open the current bill.
+- Table or counter QR stickers that open the current bill: only for places without their own website (usually the restaurant's site owns the table QR; see USE-CASES §3).
 - WooCommerce plugin; Shopify and other SDKs.
 
 ## Step 6: Product (later)
