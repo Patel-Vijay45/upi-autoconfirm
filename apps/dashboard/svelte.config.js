@@ -14,7 +14,8 @@ export default {
 				'script-src': ['self'],
 				'style-src': ['self', 'unsafe-inline'],
 				'img-src': ['self', 'data:'],
-				'connect-src': ['self'],
+				// wss: live payment status from the API (and ws:// for local dev).
+				'connect-src': ['self', 'wss:', 'ws://127.0.0.1:*', 'ws://localhost:*'],
 				'font-src': ['self'],
 				'object-src': ['none'],
 				'base-uri': ['self'],

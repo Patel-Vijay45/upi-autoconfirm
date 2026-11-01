@@ -52,8 +52,9 @@ export interface Device {
 	locationId: string;
 }
 
-export async function newLocation(sk: string, name = 'Counter 1'): Promise<string> {
-	const r = await call('POST', '/v1/locations', { key: sk, body: { name, upi_vpa: 'shop@ybl', upi_payee_name: 'My Shop' } });
+/** A counter. Each counter of a merchant needs its own UPI ID; the first one is shop@ybl. */
+export async function newLocation(sk: string, name = 'Counter 1', vpa = name === 'Counter 1' ? 'shop@ybl' : `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@ybl`): Promise<string> {
+	const r = await call('POST', '/v1/locations', { key: sk, body: { name, upi_vpa: vpa, upi_payee_name: 'My Shop' } });
 	if (r.status !== 201) throw new Error(`location create failed: ${JSON.stringify(r.json)}`);
 	return r.json.id;
 }

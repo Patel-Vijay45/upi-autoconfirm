@@ -6,13 +6,32 @@
 	const role = $derived(data.me.user.role);
 	const open = $derived(pi.status === 'pending' || pi.status === 'expired');
 	const undoable = $derived(pi.status === 'paid' && pi.paid_at && Date.now() - Date.parse(pi.paid_at) < 24 * 3600_000);
-	// While waiting, re-check every 3 s so the counter screen turns green by itself.
+	// While waiting, listen to the payment's live status (the same feed the customer's page uses), so the
+	// counter screen turns green the moment the phone confirms. A slow re-check is the fallback.
 	$effect(() => {
 		if (pi.status !== 'pending') return;
+		let ws: WebSocket | null = null;
+		try {
+			const origin = new URL(pi.checkout_url).origin.replace(/^http/, 'ws');
+			ws = new WebSocket(`${origin}/p/${encodeURIComponent(pi.id)}/live`);
+			ws.onmessage = (e) => {
+				try {
+					const m = JSON.parse(String(e.data));
+					if (m.type === 'status' && m.status !== 'pending') void invalidateAll();
+				} catch {
+					/* ignore */
+				}
+			};
+		} catch {
+			ws = null;
+		}
 		const t = setInterval(() => {
 			if (document.visibilityState === 'visible') void invalidateAll();
-		}, 3000);
-		return () => clearInterval(t);
+		}, 15_000);
+		return () => {
+			clearInterval(t);
+			ws?.close();
+		};
 	});
 	const confirm = (msg: string) => (e: SubmitEvent) => {
 		if (!window.confirm(msg)) e.preventDefault();

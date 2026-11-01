@@ -259,6 +259,7 @@ paths:
                 upi_payee_name: { type: string, maxLength: 60 }
       responses:
         '201': { description: Created }
+        '409': { description: upi_id_in_use (another active location already uses this UPI ID), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     get:
       summary: List locations
       responses:

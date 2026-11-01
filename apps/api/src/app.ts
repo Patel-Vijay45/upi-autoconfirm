@@ -8,6 +8,7 @@ import { ApiError, fromEngine, notFound, unauthorized } from './errors.ts';
 import { authDevice, authKey, authMerchant, readBody, requireRole, type MerchantAuth } from './auth.ts';
 import {
 	getIntent,
+	insertAuditStmt,
 	getLocation,
 	getMerchant,
 	getSignal,
@@ -284,6 +285,12 @@ app.post('/v1/locations', async (c) => {
 	requireRole(c.get('auth'), 'key', 'owner', 'admin');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), CreateLocation);
+	// One UPI ID = one counter. Two counters with the same UPI ID would each see every payment (inbox noise);
+	// a second phone for the same UPI ID belongs on the same counter.
+	const taken = await c.env.DB.prepare('SELECT id FROM locations WHERE merchant_id = ? AND lower(upi_vpa) = lower(?) AND active = 1')
+		.bind(auth.merchantId, body.upi_vpa)
+		.first<{ id: string }>();
+	if (taken) throw new ApiError(409, 'conflict', 'upi_id_in_use', 'a counter already uses this UPI ID; add another phone to that counter instead', 'upi_vpa');
 	const id = randomId('loc');
 	const now = Date.now();
 	await c.env.DB.prepare('INSERT INTO locations (id, merchant_id, name, upi_vpa, upi_payee_name, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
@@ -630,6 +637,17 @@ app.post('/device/v1/signals', async (c) => {
 	);
 	await c.env.DB.prepare('UPDATE devices SET last_signal_at = ? WHERE id = ? AND merchant_id = ?').bind(Date.now(), device.id, device.merchant_id).run();
 	return c.json({ results: results.map((r) => ({ ok: r.ok, signal_id: r.signalId ?? null, status: r.status ?? null, repeat: r.repeat ?? false, code: r.code ?? null })) });
+});
+
+/** The phone unpairs itself ("Unpair this phone" in the app): the server stops accepting it at once. */
+app.post('/device/v1/unpair', async (c) => {
+	const { device } = await deviceRequest(c);
+	const now = Date.now();
+	await c.env.DB.batch([
+		c.env.DB.prepare("UPDATE devices SET status = 'revoked' WHERE id = ? AND merchant_id = ?").bind(device.id, device.merchant_id),
+		insertAuditStmt(c.env.DB, { merchantId: device.merchant_id, actor: `device:${device.id}`, action: 'device.unpair', objectId: device.id, detail: {}, ip: c.req.header('cf-connecting-ip') ?? null, at: now }),
+	]);
+	return c.json({ ok: true });
 });
 
 app.post('/device/v1/heartbeat', async (c) => {

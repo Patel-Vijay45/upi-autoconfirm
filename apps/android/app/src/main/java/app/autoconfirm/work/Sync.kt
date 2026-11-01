@@ -18,6 +18,8 @@ import kotlinx.coroutines.withContext
 /** Sending, heartbeats and rule refresh. Shared by the listener service and the periodic worker. */
 object Sync {
     private val flushLock = Mutex()
+    /** Payment apps sometimes post the same notification twice at once; the dedupe check + insert must not interleave. */
+    private val intakeLock = Mutex()
     private const val DEDUPE_WINDOW_MS = 2 * 60_000L
     private const val RULES_EVERY_MS = 15 * 60_000L
 
@@ -28,17 +30,21 @@ object Sync {
             is ParseResult.Payment -> {
                 val dao = a.db.payments()
                 val keyHash = Signer.keyHash(notificationKey)
-                // The same notification updated (same key + amount within 2 min) is not a new payment.
-                if (dao.countSame(keyHash, result.amountPaise, postedAt - DEDUPE_WINDOW_MS, postedAt + DEDUPE_WINDOW_MS) > 0) return@withContext
-                val recentId = dao.insertRecent(
-                    RecentPayment(app = result.app, amountPaise = result.amountPaise, payerShort = result.payerShort, postedAt = postedAt, keyHash = keyHash, status = "waiting"),
-                )
-                dao.insertOutbox(
-                    OutboxSignal(
-                        recentId = recentId, app = result.app, amountPaise = result.amountPaise, payerShort = result.payerShort,
-                        reference = result.reference, postedAt = postedAt, keyHash = keyHash, rulesVersion = rulesVersion,
-                    ),
-                )
+                val added = intakeLock.withLock {
+                    // The same notification updated (same key + amount within 2 min) is not a new payment.
+                    if (dao.countSame(keyHash, result.amountPaise, postedAt - DEDUPE_WINDOW_MS, postedAt + DEDUPE_WINDOW_MS) > 0) return@withLock false
+                    val recentId = dao.insertRecent(
+                        RecentPayment(app = result.app, amountPaise = result.amountPaise, payerShort = result.payerShort, postedAt = postedAt, keyHash = keyHash, status = "waiting"),
+                    )
+                    dao.insertOutbox(
+                        OutboxSignal(
+                            recentId = recentId, app = result.app, amountPaise = result.amountPaise, payerShort = result.payerShort,
+                            reference = result.reference, postedAt = postedAt, keyHash = keyHash, rulesVersion = rulesVersion,
+                        ),
+                    )
+                    true
+                }
+                if (!added) return@withContext
                 runCatching { flush(ctx) }.onFailure { SyncWorker.runSoon(ctx) }
             }
             is ParseResult.Failed -> a.store.parseFailures = a.store.parseFailures + 1

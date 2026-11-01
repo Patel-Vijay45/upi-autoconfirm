@@ -72,6 +72,8 @@ The counter phone is an **Android** phone that has the shop's **payment app** (t
 ### D1. Add the counter in the dashboard
 **Counters & phones → Add a counter**: name (e.g. "Counter 1"), the shop's **UPI ID** (e.g. `shop@okaxis`), and the **name customers see**.
 
+Most shops have **one UPI ID**, so they need **one counter**. Enter the UPI ID once, when you add the counter. A counter means "one UPI ID", not "one desk": if several desks or a backup phone use the same UPI ID, pair **more phones to the same counter** (the same payment is then counted once). Add a second counter only for a different UPI ID (the dashboard refuses the same UPI ID twice).
+
 ### D2. Install the AutoConfirm app
 1. Open the APK file on the phone.
 2. If Android says the source isn't allowed: **Settings → Allow from this source**, then back → **Install**.
@@ -94,9 +96,13 @@ The counter phone is an **Android** phone that has the shop's **payment app** (t
 | **Autostart** | Only on Xiaomi, Oppo, Vivo, Realme: **Open settings** → allow autostart. |
 | **Payment-app rules loaded** | Should show ✓ with a version. If ✗, tap **Retry** (needs internet). |
 
-The top of the app should say **Online**. In the dashboard, the phone shows **Online** too (refresh).
+The top of the app should say **Online**. In the dashboard, the phone shows **Online** too.
 
 Keep the phone charged, on internet, and don't swipe AutoConfirm away from recent apps. If it goes offline, the dashboard shows it.
+
+### D5. Removing a phone (stays in sync both ways)
+- **Dashboard → Counters & phones → Remove:** the server stops accepting that phone at once. Within a few minutes the app shows "This phone was removed, pair again".
+- **App → Unpair this phone:** the app tells the server, and the dashboard shows the phone as removed. If the phone is offline at that moment, also press **Remove** in the dashboard.
 
 ---
 
@@ -115,7 +121,7 @@ Note: right now the app reads **Google Pay "paid you"** alerts and **bank credit
 ## F. Daily use
 
 ### Taking a payment at the counter
-**+ New payment** → amount (and an optional note like "Table 4") → show the QR to the customer → the page turns **✓ Paid** by itself. The customer must pay the **exact** amount shown, including the paise; the extra paise is how the system knows which order it is.
+**+ New payment** → amount (and an optional note like "Table 4") → show the QR to the customer → the page turns **✓ Paid** by itself, usually within a second or two of the phone seeing the payment (no refresh needed). The payments list also refreshes itself while something is waiting. The customer must pay the **exact** amount shown, including the paise; the extra paise is how the system knows which order it is.
 
 ### Payments list
 Filter by **Waiting / Paid / Expired / Cancelled**. Open a payment to:

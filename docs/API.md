@@ -26,7 +26,7 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 - **Test and live mode are fully separate.** `sk_test_` keys see only test intents, test phones (paired with a test key) and test webhooks. A test phone or the device simulator can never pay a live intent.
 
 ## 2a. Locations and phones
-- `POST /v1/locations` with `{"name": "Counter 1", "upi_vpa": "shop@ybl", "upi_payee_name": "My Shop"}`. Each location is one UPI ID with its own phone(s).
+- `POST /v1/locations` with `{"name": "Counter 1", "upi_vpa": "shop@ybl", "upi_payee_name": "My Shop"}`. Each location is one UPI ID with its own phone(s). A UPI ID can belong to only one active location per merchant (`409 upi_id_in_use`); to watch it from more phones, pair more phones to that location.
 - `GET /v1/locations`
 - `POST /v1/locations/:id/pairing_codes` returns `{code, pairing_link, expires_at}` (valid 10 min, single use).
   - Show `pairing_link` (`autoconfirm://pair?api=…&code=pc_…`) as a QR. The phone's camera opens the app, which sends the code to `/device/v1/enroll`.
@@ -202,6 +202,7 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
 | `POST /device/v1/enroll` `{pairing_code, device_info}` | Pair the phone, which receives `device_id` and `device_secret` (once) |
 | `POST /device/v1/signals` | Batch of parsed notifications (signed) |
 | `POST /device/v1/heartbeat` | Every 5 min: listener status, app versions, queue size, battery-optimisation state, phone clock (`device_time`). The server stores `clock_offset` from it. |
+| `POST /device/v1/unpair` `{}` | The phone unpairs itself (signed). The server marks it revoked at once. Removing the phone in the dashboard does the same from the other side: the phone's next request gets `401` and the app shows "removed, pair again". |
 | `GET /device/v1/parser_rules?version=` | Current parser rules (ETag-cached) |
 | `POST /device/v1/parse_failures` | *(Planned, not built.)* Redacted notification text that matched a payment app but couldn't be parsed; opt-in. |
 
