@@ -108,6 +108,12 @@ class ApiClient(
         if (status != 200) throw error(status, text)
     }
 
+    /** "Unpair this phone": the server stops accepting this phone at once. */
+    fun unpair(creds: Credentials) {
+        val (status, text) = signed(creds, "POST", "/device/v1/unpair", "{}")
+        if (status != 200 && status != 401) throw error(status, text)
+    }
+
     /** Returns the rules JSON, or null when our version is current (304) or none are published (404). */
     fun parserRules(creds: Credentials, currentVersion: String?): String? {
         val path = "/device/v1/parser_rules" + if (currentVersion.isNullOrEmpty()) "" else "?version=" + java.net.URLEncoder.encode(currentVersion, "UTF-8")

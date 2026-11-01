@@ -1,8 +1,21 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
 	import { inr, when, STATUS_LABEL } from '$lib/format.ts';
 	let { data, form } = $props();
 	let showNew = $state(false);
+	// While payments are waiting, refresh every 10 s (only when the page is on screen; pauses after 10 min
+	// to stay well inside the free plan's daily requests).
+	const waiting = $derived(data.intents.data.some((i: { status: string }) => i.status === 'pending'));
+	let autoUntil = $state(Date.now() + 10 * 60_000);
+	$effect(() => {
+		if (!waiting) return;
+		const t = setInterval(() => {
+			if (Date.now() > autoUntil) return;
+			if (document.visibilityState === 'visible') void invalidateAll();
+		}, 10_000);
+		return () => clearInterval(t);
+	});
 	const tabs = [['', 'All'], ['pending', 'Waiting'], ['paid', 'Paid'], ['expired', 'Expired'], ['cancelled', 'Cancelled']];
 	const href = (status: string) => {
 		const q = new URLSearchParams();
@@ -49,6 +62,12 @@
 	</form>
 	{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
 </details>
+
+{#if waiting}
+	<p class="small muted">
+		{#if Date.now() < autoUntil}Updating automatically while payments are waiting.{:else}Auto-update paused. <button class="ghost small" onclick={() => { autoUntil = Date.now() + 10 * 60_000; void invalidateAll(); }}>Refresh</button>{/if}
+	</p>
+{/if}
 
 <nav class="tabs" aria-label="Status">
 	{#each tabs as [s, label]}<a href={href(s)} aria-current={data.status === s ? 'page' : undefined}>{label}</a>{/each}

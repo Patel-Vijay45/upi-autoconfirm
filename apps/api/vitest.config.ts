@@ -22,6 +22,7 @@ export default defineConfig(async () => {
 						DASHBOARD_URL: 'https://dash.example.com',
 						// Tests must not depend on a developer's local .dev.vars.
 						PUBLIC_API_URL: '',
+						CHECKOUT_BASE_URL: 'https://pay.example.com',
 					},
 				},
 			}),

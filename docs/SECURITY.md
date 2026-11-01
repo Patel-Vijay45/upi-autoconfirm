@@ -26,6 +26,7 @@ We never hold money, so there are no funds to steal. The main risk is **false "p
 | T12 | **UPI ID swap** (attacker changes the merchant's UPI ID in the dashboard) | Customers pay the attacker | Changing the UPI ID requires MFA re-auth plus an email/SMS alert to the owner; a 1-hour delay before it takes effect (configurable); audit log |
 | T13 | Malicious merchant fakes their **own** confirmations | Only affects their own shop | Accepted risk. **Product rule: never use AutoConfirm where a third party must trust the confirmation** (escrow, marketplaces). |
 | T14 | DoS / abuse | Outage, cost | Cloudflare WAF + rate limits; per-merchant quotas; Turnstile on public endpoints that create things (none create by default) |
+| T16 | **Fake bank SMS** sent to the counter phone ("your A/c is credited with INR 930.07") | False "paid" | SMS are read only when the sender is a bank DLT header on an allow-list (e.g. `JD-IDFCFB-S`); ordinary numbers and lookalikes are rejected (tested in `RealRulesTest`). Use `auto_confirm_max` for expensive orders. |
 | T15 | Supply chain | Backdoor | Lockfiles; Renovate with review; minimal dependencies; no third-party SDKs in the Android app; signed releases |
 
 ## 3. Keys and secrets
@@ -34,7 +35,7 @@ We never hold money, so there are no funds to steal. The main risk is **false "p
 - **Webhook secrets:** like device secrets. Shown once.
 - **Rotation:** all secrets can be rotated without downtime (24 h overlap).
 - **Workers Secrets** for master keys; never in code or `wrangler.toml`.
-- **Backups:** D1 Time Travel plus a nightly encrypted export to R2 (with a separate key).
+- **Backups:** D1 Time Travel. Planned: a nightly encrypted export to R2 (with a separate key).
 
 ## 4. Data protection and privacy
 - **Minimise:**

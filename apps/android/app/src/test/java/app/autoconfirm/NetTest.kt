@@ -60,6 +60,15 @@ class NetTest {
         assertEquals(93007, sent.getInt("amount_paise"))
     }
 
+    @Test fun unpair_is_a_signed_post() {
+        server.enqueue(MockResponse().setBody("{\"ok\":true}"))
+        api.unpair(creds)
+        val req = server.takeRequest()
+        assertEquals("/device/v1/unpair", req.path)
+        assertEquals("POST", req.method)
+        assertEquals(Signer.sign("devsecret", "POST", "/device/v1/unpair", req.getHeader("x-timestamp")!!, req.getHeader("x-nonce")!!, "{}"), req.getHeader("x-signature"))
+    }
+
     @Test fun heartbeat_reports_phone_time() {
         server.enqueue(MockResponse().setBody("""{"ok":true}"""))
         api.heartbeat(creds, listenerConnected = true, appVersion = "0.1.0", queueSize = 2, batteryOptimized = false)

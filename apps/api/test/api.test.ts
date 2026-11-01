@@ -224,6 +224,28 @@ describe('device security', () => {
 		expect(((await res.json()) as { error: { code: string } }).error.code).toBe('public_api_url_missing');
 	});
 
+	it('the phone can unpair itself; only itself', async () => {
+		const { keys, device, locationId } = await setup();
+		const other = await pairDevice(keys.sk, locationId);
+		expect((await deviceCall(device, 'POST', '/device/v1/unpair', {})).status).toBe(200);
+		expect((await deviceCall(device, 'POST', '/device/v1/heartbeat', { device_time: Date.now(), listener_connected: true })).status).toBe(401);
+		expect((await deviceCall(other, 'POST', '/device/v1/heartbeat', { device_time: Date.now(), listener_connected: true })).status).toBe(200);
+		const row = await env.DB.prepare('SELECT status FROM devices WHERE id = ?').bind(device.id).first<{ status: string }>();
+		expect(row!.status).toBe('revoked');
+	});
+
+	it('one UPI ID can only be one counter per merchant', async () => {
+		const keys = await newMerchant();
+		await newLocation(keys.sk);
+		const dup = await call('POST', '/v1/locations', { key: keys.sk, body: { name: 'Counter 2', upi_vpa: 'SHOP@ybl', upi_payee_name: 'My Shop' } });
+		expect(dup.status).toBe(409);
+		expect(dup.json.error.code).toBe('upi_id_in_use');
+		expect((await call('POST', '/v1/locations', { key: keys.sk, body: { name: 'Counter 2', upi_vpa: 'shop2@ybl', upi_payee_name: 'My Shop' } })).status).toBe(201);
+		// Another merchant is not affected.
+		const other = await newMerchant();
+		expect((await call('POST', '/v1/locations', { key: other.sk, body: { name: 'C', upi_vpa: 'shop@ybl', upi_payee_name: 'X' } })).status).toBe(201);
+	});
+
 	it('a pairing code works once', async () => {
 		const keys = await newMerchant();
 		const loc = await newLocation(keys.sk);

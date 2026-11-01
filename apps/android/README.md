@@ -30,7 +30,7 @@ Release builds only accept `https://` API addresses. Debug builds also accept `h
 ## Parser rules
 The app has no built-in rules. It downloads them from `GET /device/v1/parser_rules`, which serves the KV key `active`.
 - The live rules are in [rules/parser-rules.json](../../rules/parser-rules.json). Every deploy publishes them.
-- Google Pay's "paid you" alert is verified on a real phone (see `RealRulesTest`). PhonePe and Paytm are still unverified guesses.
+- Verified on a real phone (see `RealRulesTest`): Google Pay's "paid you" alert and IDFC FIRST credit SMS. Debit SMS are ignored, and SMS are only read from bank sender headers. PhonePe/Paytm and other banks' credit SMS are still unverified.
 
 To publish rules locally:
 ```bash

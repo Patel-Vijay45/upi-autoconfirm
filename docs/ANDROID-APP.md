@@ -86,7 +86,15 @@ package: com.phonepe.app.business   title: "Payment received"   text: "₹930.07
 - **No accessibility service** and no SMS permission. This keeps Play Store review simpler and limits risk.
 - **Local data:** the queue holds only parsed fields and is cleared after a successful send. Today's list in the UI is kept for 24 h.
 
-## 7. Distribution
+## 7. Installing the current build (sideloaded APK)
+Until the app is on the Play Store, Android shows two warnings (step by step in USER-MANUAL D2/D4):
+- **Play Protect** may block the install: "More details → Install anyway", or pause Play Protect while installing.
+- **Notification access** is blocked as a "restricted setting": Settings → Apps → AutoConfirm → ⋮ → **Allow restricted settings**, then turn on access for AutoConfirm.
+- Battery: "App battery usage" → tap **Allow background usage** → **Unrestricted**.
+
+Real-phone status (2026-11-01): Google Pay "<payer> paid you ₹X" alerts and IDFC FIRST credit SMS are verified and in `rules/parser-rules.json`; debit SMS are ignored. PhonePe/Paytm alerts and other banks' credit SMS still need real samples.
+
+## 8. Distribution
 - **Google Play:** apps using `NotificationListenerService` need a clear in-app disclosure and a privacy policy, and a store listing that explains the core use (see COMPLIANCE.md). Expect review questions.
 - **Fallback:** a signed APK from our website, with a pinned update check inside the app.
 - The minimum app version is enforced by the server: older apps are told to update before they can send.

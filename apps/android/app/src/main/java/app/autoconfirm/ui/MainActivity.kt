@@ -283,7 +283,11 @@ private fun StatusScreen(tick: Int, refresh: () -> Unit) {
                     confirmUnpair = false
                     SyncWorker.cancelAll(context)
                     scope.launch {
-                        withContext(Dispatchers.IO) { a.db.clearAllTables() }
+                        withContext(Dispatchers.IO) {
+                            // Tell the server first (best effort: if offline, remove the phone in the dashboard).
+                            a.store.credentials()?.let { creds -> runCatching { a.api.unpair(creds) } }
+                            a.db.clearAllTables()
+                        }
                         a.store.clear()
                         refresh()
                     }

@@ -2,11 +2,17 @@
 
 AutoConfirm is a **standalone, reusable service**. Any number of projects (online shops, counters, restaurants, booking sites) plug into it as separate merchants through the same API, webhooks and checkout page. No project is special-cased.
 
+## Where we are (2026-11-01)
+- ✅ Steps 1–4 built, tested and **deployed** (staging + production on the Cloudflare free plan, via GitHub Actions). See [DEPLOY.md](DEPLOY.md).
+- ✅ First shop created through the dashboard's `/operator` page; owner logged in with an authenticator code.
+- ✅ First real phone test: the Android app paired. Google Pay's "paid you ₹1.00" notification was captured and turned into the live rules (`rules/parser-rules.json`).
+- ▶ **Now:** the real ₹1 end-to-end test (dashboard **New payment** → pay with Google Pay → **Paid ✓**). Then PhonePe/Paytm samples.
+- ▶ **Next:** the small follow-ups below, the Play Store internal-testing release, then Step 5.
+
 ## Step 1: Core service (API + matching engine) ✅ built
 **Not done yet (small follow-ups):**
 - Rate limits (60 req/s per merchant, 10 signals/s per device).
 - Cron jobs: device-offline alerts (`device.offline` / `device.online`), clean-up of old idempotency rows, data retention.
-- Live status stream (WebSocket/SSE) for checkout pages. It comes with Step 3.
 - Key rotation and revoke endpoints (keys can be revoked in D1 for now).
 - Parser-rule publishing tool (rules are read from KV key `active`).
 
@@ -58,10 +64,13 @@ Code in `apps/dashboard`. Logins use a password plus an authenticator-app code (
 - Reports and CSV export.
 - Self-serve signup can come later; at first, merchants are created by the operator.
 
+## Deployment ✅ built
+`tools/deploy/deploy.mjs` + `.github/workflows/deploy.yml`: push → staging, "Run workflow" → production. It creates resources, applies migrations, sets the keys, publishes the parser rules and smoke-tests. The dashboard's `/operator` page creates shops.
+
 ## Step 5: Use-case features
 See [USE-CASES.md](USE-CASES.md).
 - Unique QR printed on bills (POS / thermal printer).
-- Longer expiry per merchant.
+- Longer expiry per merchant. ✅ (setting `max_intent_ttl`, up to 3 h)
 - Tip buttons and split bills.
 - Table or counter QR stickers that open the current bill.
 - WooCommerce plugin; Shopify and other SDKs.
