@@ -122,6 +122,7 @@ components:
         received_at: { type: string, format: date-time }
         payment_intent: { type: [string, 'null'], description: 'Matched intent, or the suggested intent while status is review' }
         duplicate_of: { type: [string, 'null'], description: 'First signal of the same payment, when status is duplicate' }
+        likely_walk_in: { type: boolean, description: 'Unmatched and not near any recent order: probably a walk-in payment (display hint; can still be matched)' }
         suggestions:
           type: array
           description: Closest pending intents (by amount and time) for one-tap manual assignment
@@ -277,6 +278,7 @@ paths:
       parameters:
         - { name: status, in: query, schema: { type: string, enum: [matched, unmatched, ambiguous, review, ignored, duplicate] } }
         - { name: location_id, in: query, schema: { type: string } }
+        - { name: walk_in, in: query, description: 'true = only likely walk-ins; false = only payments that need a look', schema: { type: string, enum: ['true', 'false'] } }
       responses:
         '200':
           description: OK

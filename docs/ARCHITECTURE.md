@@ -71,7 +71,7 @@ Merchants, users, sessions, keys, locations, devices, payment intents, signals, 
 - No database access: every request goes to the API through a **service binding**, so all rules live in the API.
 
 ### 2.9 Not built yet (planned)
-- Cron jobs: device-offline alerts, data retention, clean-up of old idempotency rows.
+- Cron jobs: data retention, clean-up of old idempotency rows. (Phone-offline alerts are built: a 5-minute cron in `alerts.ts`.)
 - R2 exports/backups (D1 Time Travel covers point-in-time recovery for now).
 - Rate limits per merchant/device (login and operator throttling exist).
 
@@ -126,7 +126,7 @@ LocationDO:
 
 ### 4.4 Fallbacks
 - **Manual:** the merchant taps "Mark paid" in the dashboard or calls the API. This is always available and recorded in the audit log.
-- **Phone offline:** the heartbeat stops, the merchant is alerted after 10 min, and the checkout shows "Staff will confirm your payment at the counter".
+- **Phone offline:** the heartbeat stops. After 11 min the cron (every 5 min) marks it offline and alerts the merchant (webhook `device.offline`, push alert, dashboard banner). If a payment is created at that counter first, the alert goes out at once, and after "I have paid" the checkout says "show this screen at the counter".
 - **Late notification** (after expiry): the service matches against intents expired less than 30 min ago (grace window) and flags `late: true`.
 
 ## 5. Multi-tenancy

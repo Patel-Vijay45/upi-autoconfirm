@@ -120,6 +120,7 @@ export function presentSignal(row: SignalRow) {
 		payment_intent: row.payment_intent_id,
 		duplicate_of: row.duplicate_of,
 		note: row.note,
+		likely_walk_in: row.walk_in === 1,
 	};
 }
 
@@ -165,6 +166,7 @@ export function webhookSignalObject(s: Signal, locationId: string, reason?: stri
 		received_at: iso(s.receivedAt),
 		payment_intent: s.intentId,
 		reason: reason ?? null,
+		likely_walk_in: s.walkIn,
 	};
 }
 

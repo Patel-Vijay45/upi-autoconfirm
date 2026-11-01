@@ -23,6 +23,8 @@ export default defineConfig(async () => {
 						// Tests must not depend on a developer's local .dev.vars.
 						PUBLIC_API_URL: '',
 						CHECKOUT_BASE_URL: 'https://pay.example.com',
+						// Test-only VAPID key (push alerts). Real keys are created by the deploy script.
+						VAPID_PRIVATE_KEY: '{"kty":"EC","crv":"P-256","x":"mDLOtFmO6KlYUlZQ9DCE1X_EJ9w7bvqDvLeD9uONTZc","y":"Y98Ehk8SFKAhy-QtC_zVTbRTiNJy6Jow1EaHGVsp2co","d":"YpwyUTPdpkLPrPbEZb-E5FTwSqfH55AhJM9d3Gr671g"}',
 					},
 				},
 			}),

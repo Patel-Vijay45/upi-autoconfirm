@@ -14,7 +14,7 @@ Read [README.md](README.md), then [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (re
 - **Server:**
   - Cloudflare Workers + Hono, written in TypeScript.
   - Durable Object `LocationDO`, one per `merchant:location:mode`. It runs the matching engine, the outbox and live WebSockets. `PasswordDO` hashes passwords.
-  - D1 is the source of truth. Queues deliver webhooks, KV holds parser rules. (Cron jobs are planned, not built.)
+  - D1 is the source of truth. Queues deliver webhooks and push alerts, KV holds parser rules. A 5-minute cron marks phones offline (`alerts.ts`).
 - **Android app:** Kotlin, NotificationListenerService, Room, WorkManager, OkHttp, Keystore.
 - **Dashboard:** SvelteKit on Cloudflare.
 - **Contracts:** API in [api/openapi.yaml](api/openapi.yaml), schema in [db/schema.sql](db/schema.sql).

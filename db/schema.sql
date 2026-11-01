@@ -145,6 +145,7 @@ CREATE TABLE signals (
 	payment_intent_id TEXT,                    -- matched intent, or the suggested intent while status = 'review'
 	duplicate_of TEXT,                         -- first signal of the same payment, when status = 'duplicate'
 	note TEXT,
+	walk_in INTEGER NOT NULL DEFAULT 0,        -- unmatched and not near any recent order (likely walk-in); display hint (0003)
 	UNIQUE (location_id, fingerprint)
 );
 CREATE INDEX signals_inbox ON signals(merchant_id, status, received_at);
@@ -264,3 +265,17 @@ CREATE TABLE login_throttle (
 	failures INTEGER NOT NULL,
 	window_start INTEGER NOT NULL
 );
+
+-- Browsers (dashboard users' phones) that asked for push alerts (0003).
+CREATE TABLE push_subscriptions (
+	id TEXT PRIMARY KEY,                       -- psub_xxx
+	merchant_id TEXT NOT NULL,
+	user_id TEXT NOT NULL REFERENCES users(id),
+	endpoint TEXT NOT NULL UNIQUE,             -- push service URL (allow-listed hosts only)
+	p256dh TEXT NOT NULL,                      -- browser's public key (base64url)
+	auth TEXT NOT NULL,                        -- browser's auth secret (base64url)
+	label TEXT,                                -- e.g. "Chrome on Android"
+	created_at INTEGER NOT NULL,
+	last_sent_at INTEGER
+);
+CREATE INDEX push_subscriptions_merchant ON push_subscriptions(merchant_id);

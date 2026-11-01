@@ -98,6 +98,13 @@ ingest(signal):
      |candidates| >  1  → store as AMBIGUOUS, emit signal.unmatched (reason: ambiguous). Never auto-pick.
 ```
 
+### 3a. Walk-in hint (display only)
+A shop's UPI ID also receives payments that aren't website orders (people scanning the printed QR, soundbox payments). Each one is `unmatched`, which would bury the inbox. So when step 6 finds **no** candidate, the engine also sets `walk_in`:
+- `walk_in = false` (needs a look) when some intent whose amount is still reserved (open, or closed within its cool-down) has `|signal.amount − unique_amount| ≤ ₹1` or `signal.amount == amount`. This catches a round amount (₹930 for ₹930.07), a small typo and a double payment.
+- Otherwise `walk_in = true` (likely walk-in). The dashboard lists it under **Inbox → Other payments**, with no alert.
+- Ambiguous, review, rejected and undone signals are never walk-ins. The merchant setting `walk_in_filter` (default on) turns it off.
+- It never changes matching. A walk-in signal can still be matched by hand.
+
 Notes:
 - A queued signal sent hours later by an offline phone still uses its real `paid_time`. So it can't pay an order created after the money was actually sent.
 - The 2-minute allowance in step 4 covers a phone clock that is slightly off between heartbeats.

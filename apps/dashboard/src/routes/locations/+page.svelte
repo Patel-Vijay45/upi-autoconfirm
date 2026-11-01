@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ago, can, STATUS_LABEL } from '$lib/format.ts';
 	import { autoRefresh } from '$lib/auto-refresh.svelte.ts';
+	import AlertsCard from '$lib/AlertsCard.svelte';
 	let { data, form } = $props();
 	// Phones pairing, going offline or unpairing themselves show up without a refresh.
 	const live = autoRefresh(15_000);
@@ -20,6 +21,8 @@
 </p>
 {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
 {#if form?.done}<p class="notice" role="status">{form.done}</p>{/if}
+
+{#if data.push.enabled && data.push.public_key}<AlertsCard publicKey={data.push.public_key} />{/if}
 
 {#each data.locations as loc (loc.id)}
 	<div class="card">

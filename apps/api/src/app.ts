@@ -23,6 +23,7 @@ import { locationObjectName, type Actor, type LocationCtx, type Result } from '.
 import { settingsFromJson } from './settings.ts';
 import { registerCheckout } from './checkout.ts';
 import { registerDashboard, requireOperator } from './dashboard.ts';
+import { alertIfCounterOffline, backOnline } from './alerts.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
 type Ctx = Context<AppEnv>;
@@ -173,6 +174,8 @@ const ListQuery = z.object({
 const SignalListQuery = z.object({
 	status: z.enum(['matched', 'unmatched', 'ambiguous', 'review', 'ignored', 'duplicate']).optional(),
 	location_id: z.string().max(64).optional(),
+	/** true: only likely walk-ins; false: only payments that need a look. */
+	walk_in: z.enum(['true', 'false']).optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	starting_after: z.string().max(64).optional(),
 });
@@ -246,7 +249,7 @@ const Heartbeat = z
 const CreateMerchant = z
 	.object({
 		name: z.string().min(1).max(100),
-		settings: z.record(z.string(), z.union([z.string(), z.number(), z.null()])).optional(),
+		settings: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 	})
 	.strict();
 
@@ -393,6 +396,8 @@ app.post('/v1/payment_intents', async (c) => {
 	} else {
 		response = presentIntent(rowFromEngine(r.intent!, extras), loc, c.env.CHECKOUT_BASE_URL, now);
 	}
+	// A customer is about to pay: if no phone at this counter is online, alert now instead of at the next cron run.
+	if (!r.existingId) await alertIfCounterOffline(c, auth.merchantId, loc.id, auth.livemode, now);
 	if (idemKey) {
 		await c.env.DB.prepare('INSERT OR IGNORE INTO idempotency (merchant_id, key, request_hash, response, created_at) VALUES (?, ?, ?, ?, ?)')
 			.bind(auth.merchantId, idemKey, requestHash, JSON.stringify(response), now)
@@ -478,6 +483,7 @@ app.get('/v1/signals', async (c) => {
 	const args: unknown[] = [auth.merchantId, auth.livemode ? 1 : 0];
 	if (q.data.status) (where.push('status = ?'), args.push(q.data.status));
 	if (q.data.location_id) (where.push('location_id = ?'), args.push(q.data.location_id));
+	if (q.data.walk_in) (where.push('walk_in = ?'), args.push(q.data.walk_in === 'true' ? 1 : 0));
 	if (q.data.starting_after) {
 		const cur = await getSignal(c.env.DB, auth.merchantId, q.data.starting_after);
 		if (!cur) throw new ApiError(400, 'invalid_request', 'invalid_param', 'starting_after not found', 'starting_after');
@@ -577,8 +583,10 @@ app.get('/v1/public/payment_intents/:id/status', async (c) => {
 app.post('/v1/public/payment_intents/:id/claim', async (c) => {
 	const { auth, row } = await loadPublicIntent(c, c.req.param('id'));
 	const i = unwrap(await locationStub(c.env, auth.merchantId, row.location_id, auth.livemode).claim(lctx(auth, row.location_id), row.id));
-	return c.json(presentPublicStatus(overlay(row, i), Date.now()));
+	const offline = !(await alertIfCounterOffline(c, auth.merchantId, row.location_id, auth.livemode, Date.now()));
+	return c.json({ ...presentPublicStatus(overlay(row, i), Date.now()), phone_offline: offline });
 });
+
 
 // ---------- device API (merchant's phone) ----------
 
@@ -661,6 +669,7 @@ app.post('/device/v1/heartbeat', async (c) => {
 	)
 		.bind(now - hb.device_time, now, hb.listener_connected ? 1 : 0, hb.app_version ?? null, hb.battery_optimized === undefined ? null : hb.battery_optimized ? 1 : 0, device.id, device.merchant_id)
 		.run();
+	if (device.status === 'offline') await backOnline(c.env, device, now);
 	return c.json({ ok: true, server_time: now });
 });
 

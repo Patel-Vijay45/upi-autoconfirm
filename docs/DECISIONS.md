@@ -108,3 +108,13 @@ Format: **Decision** — why — consequences.
     - Debit, OTP and collect-request SMS are ignored.
     - The engine counts the app alert and the SMS for one payment once, pairing copies one-to-one per (phone, channel), so a real double payment still appears in the inbox.
 
+29. **Likely walk-in payments are a display hint, not a status.**
+    A shop's UPI ID also gets payments that aren't orders, and they buried the inbox. An unmatched payment not within ₹1 (or the round amount) of any open or recently closed order goes to **Inbox → Other payments**, with no alert.
+    → Matching and the invariants are unchanged; nothing is auto-ignored. A new signal status would have touched every consumer, so it's a flag (`walk_in`) on `unmatched`.
+
+30. **Phone-offline alerts: a 5-minute cron plus Web Push; no paid SMS or email.**
+    A dead phone silently stops confirmations. The cron marks a phone offline after 11 min without a check-in and sends `device.offline` once (webhook + push); the next check-in sends `device.online`. Creating a payment at a counter with no online phone alerts at once, and the customer page says "show this screen at the counter".
+    - Push uses standard Web Push (VAPID, aes128gcm) written on Web Crypto, tested against the RFC 8291 example. It's free and needs no third-party SDK.
+    - Only real push-service hosts are accepted, so a subscription can't make the Worker call arbitrary URLs.
+    - The VAPID key is created once by the deploy script and never replaced (that would break every subscription).
+    - The app also warns on the phone itself when notification access is turned off.

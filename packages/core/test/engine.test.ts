@@ -428,3 +428,46 @@ describe('expiry, prune and restart', () => {
 		expect(restored.ingest({ ...input, id: 'sig_again' }, T0 + 2 * MIN).repeat).toBe(true);
 	});
 });
+
+describe('walk-in filter', () => {
+	it('flags an unmatched payment far from every recent order as a walk-in', () => {
+		const e = engine();
+		e.createIntent({ id: 'pi_1', amount: 93000 }, T0); // ₹930.01
+		const r = e.ingest(sig(6000), T0 + 1000); // ₹60 tea
+		expect(r.signal).toMatchObject({ status: 'unmatched', walkIn: true });
+		expect(r.changes.events).toEqual([{ type: 'signal.unmatched', signalId: r.signal.id, reason: 'no_match' }]);
+	});
+
+	it('keeps payments near an order in the inbox: round amount, small typo, double payment', () => {
+		const e = engine();
+		const { intent } = e.createIntent({ id: 'pi_1', amount: 93000 }, T0);
+		expect(e.ingest(sig(93000), T0 + 1000).signal.walkIn).toBe(false); // paid without the paise
+		expect(e.ingest(sig(intent.uniqueAmount + 90), T0 + 2000).signal.walkIn).toBe(false); // within ₹1
+		expect(e.ingest(sig(intent.uniqueAmount), T0 + 3000).signal.status).toBe('matched');
+		// Paid twice: the amount is still reserved (cool-down), so the copy needs a look.
+		const again = e.ingest(sig(intent.uniqueAmount, { payerShort: 'Sita K' }), T0 + 5 * MIN);
+		expect(again.signal).toMatchObject({ status: 'unmatched', walkIn: false });
+		// Once the cool-down is over, the same amount is just a walk-in.
+		expect(e.ingest(sig(intent.uniqueAmount, {}, T0 + 3 * 60 * MIN), T0 + 3 * 60 * MIN).signal.walkIn).toBe(true);
+	});
+
+	it('never flags ambiguous, review or rejected signals, and can be turned off', () => {
+		const e = engine({ autoConfirmMax: 100_000 });
+		const { intent } = e.createIntent({ id: 'pi_1', amount: 200_000 }, T0);
+		const r = e.ingest(sig(intent.uniqueAmount), T0 + 1000);
+		expect(r.signal).toMatchObject({ status: 'review', walkIn: false });
+		e.rejectSignal(r.signal.id, T0 + 2000);
+		expect(e.getSignal(r.signal.id)).toMatchObject({ status: 'unmatched', walkIn: false });
+		const off = engine({ walkInFilter: false });
+		expect(off.ingest(sig(6000), T0).signal).toMatchObject({ status: 'unmatched', walkIn: false });
+	});
+
+	it('restores older snapshots without the flag', () => {
+		const e = engine();
+		e.ingest(sig(6000), T0);
+		const snap = e.snapshot();
+		for (const s of snap.signals) delete (s as { walkIn?: boolean }).walkIn;
+		const back = new LocationEngine(DEFAULT_SETTINGS, pick(), snap);
+		expect(back.snapshot().signals[0]!.walkIn).toBe(false);
+	});
+});

@@ -13,6 +13,7 @@ import { getIntent, getLocation, getMerchant, type IntentRow, type LocationRow }
 import { checkoutView, presentPublicStatus } from './present.ts';
 import { locationObjectName } from './location-do.ts';
 import { settingsFromJson } from './settings.ts';
+import { alertIfCounterOffline } from './alerts.ts';
 import { PAGE_JS, WIDGET_JS } from './generated/checkout-assets.ts';
 
 const ID = /^pi_[a-z2-7]{20}$/;
@@ -112,7 +113,9 @@ export function registerCheckout(app: Hono<AnyEnv>) {
 	app.post('/p/:id/claim', async (c) => {
 		const found = await loadById(c.env, c.req.param('id'));
 		if (!found) throw notFound('payment intent');
-		return c.json(presentPublicStatus(await claim(c.env, found.row), Date.now()));
+		const row = await claim(c.env, found.row);
+		const online = await alertIfCounterOffline(c, row.merchant_id, row.location_id, row.livemode === 1, Date.now());
+		return c.json({ ...presentPublicStatus(row, Date.now()), phone_offline: !online });
 	});
 
 	app.get('/p/:id/live', async (c) => {

@@ -209,9 +209,10 @@ describe('dashboard features', () => {
 		await sendSignal(device, p1.unique_amount);
 		const p2 = (await createIntent(keys.sk, { amount: 50000 })).json;
 		await call('POST', `/v1/payment_intents/${p2.id}/mark_paid`, { key: keys.sk, body: {} });
-		await sendSignal(device, 1234); // unmatched
+		await sendSignal(device, 1234); // unmatched, not near any order: a walk-in
+		await sendSignal(device, 50000); // p2's round amount: needs a look
 		const r = await call('GET', '/v1/reports/summary', { key: keys.sk });
-		expect(r.json.total).toMatchObject({ paid_count: 2, auto_count: 1, open_inbox: 1, received: p1.unique_amount + p2.unique_amount });
+		expect(r.json.total).toMatchObject({ paid_count: 2, auto_count: 1, open_inbox: 1, walk_in_count: 1, walk_in_received: 1234, received: p1.unique_amount + p2.unique_amount });
 		const res = await (await import('../src/app.ts')).app.request('/v1/reports/payments.csv', { headers: { authorization: `Bearer ${keys.sk}` } }, env);
 		expect(res.headers.get('content-type')).toContain('text/csv');
 		const text = await res.text();

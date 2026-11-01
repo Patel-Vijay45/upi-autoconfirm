@@ -35,7 +35,9 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 5. If it repeats, check parse failures for that UPI app (R3).
 
 ### R2. Device offline
-1. Merchant gets an alert. The checkout keeps working: intents stay `pending`, and staff fall back to manual marking.
+1. Merchant gets an alert: a push alert on phones where someone tapped **Turn on alerts** (Counters & phones), a red banner in the dashboard, and the `device.offline` webhook. The checkout keeps working: intents stay `pending`, and staff fall back to manual marking.
+   - How: a cron runs every 5 min (`alerts.ts`) and marks phones offline after 11 min without a check-in. The app itself also shows "AutoConfirm can't see payments" if notification access is off.
+   - No alerts arriving? Check `VAPID_PRIVATE_KEY` is set on the API Worker (the deploy script creates it once) and that the user tapped **Send test alert**.
 2. Common causes: battery saver killed the app, notification access was revoked after an OS update, no internet, phone restarted and the app wasn't opened.
 3. The app's **Self-check** screen shows which permission is missing. See dontkillmyapp.com for the phone brand.
 4. After it reconnects, the app re-sends queued notifications (up to 24 h). Late signals still match intents that are within the grace window.

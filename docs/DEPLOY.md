@@ -54,6 +54,8 @@ On the first run, the deploy script ([tools/deploy/deploy.mjs](../tools/deploy/d
 - Creates the D1 database, KV namespace and queue.
 - Applies the database migrations.
 - Generates the three encryption keys (`DEVICE_KEY`, `WEBHOOK_KEY`, `MFA_KEY`) and stores them only in Cloudflare. They are never shown and never replaced, because replacing them would make stored phone, webhook and login secrets unreadable.
+- Generates the push-alert key `VAPID_PRIVATE_KEY` the same way (once; replacing it would silently stop every browser's alerts).
+- The API Worker gets a cron trigger (every 5 min) for phone-offline alerts. The free plan allows 5 cron triggers per account; staging + production use 2.
 
 ### 6. Your first shop
 From a phone or computer browser:

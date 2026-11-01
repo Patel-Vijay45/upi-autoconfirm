@@ -107,6 +107,26 @@ describe('matching through the API', () => {
 		expect(a.json).toMatchObject({ status: 'paid', match: { source: 'manual', amount_mismatch: true, received_amount: 93000 } });
 	});
 
+	it('a payment far from every order is a likely walk-in, kept apart from the inbox', async () => {
+		const { keys, device } = await setup();
+		await createIntent(keys.sk); // ₹930.xx
+		await sendSignal(device, 93000); // round amount: needs a look
+		await sendSignal(device, 6000); // ₹60 tea: walk-in
+		const check = await call('GET', '/v1/signals?status=unmatched&walk_in=false', { key: keys.sk });
+		expect(check.json.data.map((x: { amount: number }) => x.amount)).toEqual([93000]);
+		const other = await call('GET', '/v1/signals?status=unmatched&walk_in=true', { key: keys.sk });
+		expect(other.json.data).toHaveLength(1);
+		expect(other.json.data[0]).toMatchObject({ amount: 6000, likely_walk_in: true });
+		const ev = await env.DB.prepare("SELECT payload FROM events WHERE merchant_id = ? AND type = 'signal.unmatched'").bind(keys.merchantId).all<{ payload: string }>();
+		const unmatched = ev.results.map((e) => JSON.parse(e.payload).data.object);
+		expect(unmatched).toEqual(expect.arrayContaining([expect.objectContaining({ amount: 6000, likely_walk_in: true }), expect.objectContaining({ amount: 93000, likely_walk_in: false })]));
+		// The filter can be turned off per merchant.
+		const off = await setup({ walk_in_filter: false });
+		await sendSignal(off.device, 6000);
+		const all = await call('GET', '/v1/signals?status=unmatched&walk_in=false', { key: off.keys.sk });
+		expect(all.json.data).toHaveLength(1);
+	});
+
 	it('a duplicate upload is a repeat and does not create a second signal', async () => {
 		const { keys, device } = await setup();
 		const pi = (await createIntent(keys.sk)).json;

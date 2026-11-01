@@ -22,6 +22,10 @@
 	</label>
 	<label><span>Payment request expires after (minutes)</span><input name="intent_ttl" type="number" min="2" max="180" defaultValue={s.intent_ttl / 60} /></label>
 	<label><span>Longest expiry your website may ask for (minutes, up to 180)</span><input name="max_intent_ttl" type="number" min="2" max="180" defaultValue={s.max_intent_ttl / 60} /></label>
+	<label class="row">
+		<input type="checkbox" name="walk_in_filter" defaultChecked={s.walk_in_filter} />
+		<span>Keep walk-in payments out of the inbox. Payments that aren't near any recent order go to Inbox → Other payments. Turn off if this UPI ID is only used for orders.</span>
+	</label>
 	<p class="small muted">Late payments are still matched for {s.grace_window / 60} min after expiry. An amount is reused only {s.reuse_cooldown / 60} min after its order closes.</p>
 	<button>Save</button>
 </form>

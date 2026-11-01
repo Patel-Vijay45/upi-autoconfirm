@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon for "AutoConfirm can't see payments": an exclamation mark in a circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
+        android:pathData="M12,3a9,9 0 1,0 0.01,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M11,7h2v7h-2z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M11,16h2v2h-2z" />
+</vector>

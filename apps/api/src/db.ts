@@ -80,6 +80,7 @@ export interface SignalRow {
 	payment_intent_id: string | null;
 	duplicate_of: string | null;
 	note: string | null;
+	walk_in: number;
 }
 
 /** Fields of a new intent that only D1 keeps (the engine doesn't need them). */
@@ -200,8 +201,8 @@ export function upsertSignalStmts(db: D1Database, merchantId: string, locationId
 			.prepare(
 				`INSERT OR IGNORE INTO signals
 				 (id, merchant_id, location_id, device_id, livemode, app, amount, payer_name, reference, posted_at, paid_time,
-				  received_at, fingerprint, status, payment_intent_id, duplicate_of, note)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				  received_at, fingerprint, status, payment_intent_id, duplicate_of, note, walk_in)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(
 				s.id,
@@ -221,10 +222,11 @@ export function upsertSignalStmts(db: D1Database, merchantId: string, locationId
 				s.intentId,
 				s.duplicateOf,
 				s.note,
+				s.walkIn ? 1 : 0,
 			),
 		db
-			.prepare('UPDATE signals SET status = ?, payment_intent_id = ?, duplicate_of = ?, note = ? WHERE id = ? AND merchant_id = ?')
-			.bind(s.status, s.intentId, s.duplicateOf, s.note, s.id, merchantId),
+			.prepare('UPDATE signals SET status = ?, payment_intent_id = ?, duplicate_of = ?, note = ?, walk_in = ? WHERE id = ? AND merchant_id = ?')
+			.bind(s.status, s.intentId, s.duplicateOf, s.note, s.walkIn ? 1 : 0, s.id, merchantId),
 	];
 }
 

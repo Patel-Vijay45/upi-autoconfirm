@@ -7,6 +7,7 @@ import android.service.notification.StatusBarNotification
 import app.autoconfirm.app
 import app.autoconfirm.parse.NotificationParser
 import app.autoconfirm.parse.ParseResult
+import app.autoconfirm.work.Health
 import app.autoconfirm.work.Sync
 import app.autoconfirm.work.SyncWorker
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,7 @@ class PaymentListenerService : NotificationListenerService() {
     private var heartbeat: Job? = null
 
     override fun onListenerConnected() {
+        Health.clear(this)
         heartbeat?.cancel()
         heartbeat = scope.launch {
             runCatching { Sync.refreshRules(this@PaymentListenerService) }
@@ -41,6 +43,7 @@ class PaymentListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         heartbeat?.cancel()
+        Health.check(this) // access turned off: warn on this phone
         requestRebind(ComponentName(this, PaymentListenerService::class.java))
     }
 

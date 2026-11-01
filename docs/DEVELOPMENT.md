@@ -55,7 +55,7 @@ flowchart LR
 
 | Path | What it is | Language / tech | Tests |
 |---|---|---|---|
-| `packages/core` | **The brain.** Matching engine, money (paise), ids, HMAC signatures, UPI links, QR SVG, TOTP. Pure TypeScript, no platform code. | TS | `npm test -w @autoconfirm/core` (unit + property) |
+| `packages/core` | **The brain.** Matching engine, money (paise), ids, HMAC signatures, UPI links, QR SVG, TOTP, Web Push (VAPID + aes128gcm). Pure TypeScript, no platform code. | TS | `npm test -w @autoconfirm/core` (unit + property) |
 | `apps/api` | **The server.** Cloudflare Worker (Hono): HTTP routes, `LocationDO` (runs the engine), `PasswordDO`, webhook queue consumer, hosted checkout page. | TS, Workers | `npm test -w @autoconfirm/api` (runs inside the Workers runtime) |
 | `apps/checkout` | Browser code for the hosted payment page and `checkout.js` widget, plus the shared HTML template, CSS and translations. Built into the API. | TS, esbuild | `npm run check -w @autoconfirm/checkout` (fresh + size ≤ 15 KB) |
 | `apps/dashboard` | **Merchant dashboard.** SvelteKit 2 + Svelte 5 on Cloudflare. Thin UI: its server calls the API. | Svelte, TS | `npm run check -w @autoconfirm/dashboard` + browser e2e |
@@ -205,7 +205,9 @@ Tests: `test/engine.test.ts` (scenarios), `test/engine.property.test.ts` (random
 
 | File | What |
 |---|---|
-| `index.ts` | Worker entry: `fetch` = Hono app, `queue` = webhook consumer; exports `LocationDO`, `PasswordDO`. |
+| `index.ts` | Worker entry: `fetch` = Hono app, `queue` = webhook + push consumer, `scheduled` = 5-minute phone-offline check; exports `LocationDO`, `PasswordDO`. |
+| `alerts.ts` | Phone-offline alerts: `checkOfflinePhones` (cron), `markOffline` (one `device.offline` per outage), `backOnline` (from the heartbeat), `alertIfCounterOffline` (payment created / "I have paid" at a counter with no online phone). |
+| `push.ts` | Push alerts: which events alert (`wantsPush`; never walk-ins), the alert text (`noticeFor`), `sendPush` (encrypt + VAPID + POST). |
 | `app.ts` | Most routes: locations, pairing codes, payment intents, signals inbox, webhook endpoints, public status/claim, device API, `/admin/v1/merchants`. Also the `/v1/*` auth middleware and helpers (`parseJson`, `loadIntent`, `overlay`, `shortPayer`). |
 | `dashboard.ts` | Dashboard routes: login/logout/me, invites, users, API keys, devices, location update, webhook enable/disable/deliveries, events/resend, reports (+CSV), settings, audit log, operator invites. `requireOperator` (throttled). |
 | `checkout.ts` | Hosted page `/p/:id` (+ status/claim/live), `/v1/checkout.js`, public checkout view, WebSocket forwarding, CORS for `/v1/public/*`. |
@@ -214,7 +216,7 @@ Tests: `test/engine.test.ts` (scenarios), `test/engine.property.test.ts` (random
 | `auth.ts` | `authKey` (sk_/pk_ by SHA-256 hash), `authSession` (ses_), `authMerchant` (either), `requireRole`, `authDevice` (HMAC verify), `readBody` (16 KB cap). |
 | `db.ts` | Row types + prepared statements used by the DO flush. Every tenant query has `merchant_id`. |
 | `present.ts` | JSON shapes: `presentIntent`, `presentSignal`, `presentPublicStatus`, `checkoutView`, webhook objects. |
-| `webhooks.ts` | Queue consumer: fan-out per endpoint, sign, POST (10 s timeout), record delivery, retry schedule 10 s, 1 m, 5 m, 30 m, 2 h, 12 h. |
+| `webhooks.ts` | Queue consumer: fan-out per endpoint (and per push-alert browser for live events), sign, POST (10 s timeout), record delivery, retry schedule 10 s, 1 m, 5 m, 30 m, 2 h, 12 h. Push: retry 10 s, 1 m, 5 m; a 404/410 deletes the subscription. |
 | `settings.ts` | Merchant settings JSON (snake_case, seconds) → engine `Settings` with safe bounds. |
 | `errors.ts` | `ApiError` and mapping of engine error codes → HTTP. |
 | `passwords.ts` | PBKDF2 hash format `pbkdf2_sha256$100000$salt$hash`. |
@@ -223,7 +225,7 @@ Tests: `test/engine.test.ts` (scenarios), `test/engine.property.test.ts` (random
 Error format everywhere: `{"error":{"type","code","message","param?"}}`.
 
 Tests (`apps/api/test`, run in workerd with real D1/DO/Queues via `@cloudflare/vitest-plugin`):
-`api.test.ts` (intents, matching, device security, webhooks, tenancy), `checkout.test.ts` (page, CSP, i18n, WebSocket push, widget, CORS), `dashboard.test.ts` (logins, TOTP, throttling, roles, every dashboard endpoint, tenancy). Helpers in `test/helpers.ts` (`setup()`, `createIntent`, `sendSignal`, `deviceCall`).
+`api.test.ts` (intents, matching, walk-ins, device security, webhooks, tenancy), `checkout.test.ts` (page, CSP, i18n, WebSocket push, widget, CORS), `dashboard.test.ts` (logins, TOTP, throttling, roles, every dashboard endpoint, tenancy), `alerts.test.ts` (phone offline/online), `push.test.ts` (subscribe, encrypted + signed delivery, expiry, tenancy). Helpers in `test/helpers.ts` (`setup()`, `createIntent`, `sendSignal`, `deviceCall`).
 
 ### 5.3 `apps/checkout` (customer-facing UI)
 
@@ -239,7 +241,9 @@ Tests (`apps/api/test`, run in workerd with real D1/DO/Queues via `@cloudflare/v
 - `src/lib/server/api.ts` — `api()`/`apiRaw()`/`load()`: call the API via service binding `API` (prod) or `API_URL` (dev); forwards the session, mode and client IP. A 401 logs the user out.
 - `src/lib/server/actions.ts` — `run()` turns API errors into form errors; `form()` reads form data.
 - `src/lib/format.ts` — `inr()` (Indian grouping), `parseRupees()`, dates in IST, role helpers (`can.manage/act/develop`).
-- `src/routes/` — `+page` (payments + New payment), `payments/[id]`, `inbox`, `locations` (+ `[id]/pair`), `developers`, `reports` (+ `payments.csv`), `settings`, `login`, `setup/[token]`, `operator`, `logout`, `mode`.
+- `src/lib/auto-refresh.svelte.ts` — `autoRefresh(ms, when)`: re-load the page while it's on screen, pausing after 10 min (free-plan request budget).
+- `src/lib/AlertsCard.svelte` + `src/service-worker.ts` + `src/routes/alerts/+server.ts` — "Turn on alerts on this phone" (Web Push). The service worker only shows alerts; it caches nothing.
+- `src/routes/` — `+page` (payments + New payment), `payments/[id]`, `inbox` (tabs: Needs a look / Other payments), `locations` (+ `[id]/pair`), `developers`, `reports` (+ `payments.csv`), `settings`, `login`, `setup/[token]`, `operator`, `logout`, `mode`.
 - `svelte.config.js` — strict CSP. `wrangler.jsonc` — service binding `API`, `nodejs_als` flag.
 
 Rules: forms use SvelteKit **form actions** (work without JS; CSRF-checked). Inputs use **`defaultValue`, not `value`** (text typed before hydration must survive). Never add business logic here; add an API endpoint instead.
@@ -255,6 +259,7 @@ Rules: forms use SvelteKit **form actions** (work without JS; CSRF-checked). Inp
 | `data/Db.kt` | Room: `outbox` (queued signals, deleted after send) and `recent` (today's list + on-phone dedupe). |
 | `service/PaymentListenerService.kt` | NotificationListenerService: drops non-payment apps on the first line, heartbeat every 5 min while connected. |
 | `work/Sync.kt`, `work/SyncWorker.kt` | Send queue, heartbeat, refresh rules (15 min), boot receiver. |
+| `work/Health.kt` | "AutoConfirm can't see payments" notification on the phone when notification access is off. |
 | `ui/MainActivity.kt` | Compose screens: pair, checklist (with Play-policy disclosure), status/today list. |
 
 Tests: `ParserTest`, `NetTest`, **`RealRulesTest`** (live rules vs real captured notifications), `ServerE2ETest` (skipped unless env vars point at a running API).
@@ -279,11 +284,17 @@ DEVICE_KEY=<base64 32 bytes>      # openssl rand -base64 32
 WEBHOOK_KEY=<base64 32 bytes>
 MFA_KEY=<base64 32 bytes>
 ADMIN_TOKEN=<any string of 32+ chars>
+# Optional, for push alerts. Single quotes: the value is JSON. Make one with:
+# node -e "crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']).then(k=>crypto.subtle.exportKey('jwk',k.privateKey)).then(j=>console.log(JSON.stringify(j)))"
+VAPID_PRIVATE_KEY='{"kty":"EC","crv":"P-256","x":"…","y":"…","d":"…"}'
+CHECKOUT_BASE_URL=http://127.0.0.1:8787
 PUBLIC_API_URL=http://127.0.0.1:8787
 DASHBOARD_URL=http://127.0.0.1:5173
 EOF
 npx wrangler d1 migrations apply autoconfirm --local
-npx wrangler dev --port 8787
+npx wrangler dev --port 8787 --test-scheduled
+# Run the 5-minute phone-offline check by hand:
+curl "http://127.0.0.1:8787/__scheduled?cron=*/5+*+*+*+*"
 ```
 
 **Run the dashboard locally**

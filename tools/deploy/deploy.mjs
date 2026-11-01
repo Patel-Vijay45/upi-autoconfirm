@@ -229,6 +229,12 @@ async function main() {
 		for (const name of ['DEVICE_KEY', 'WEBHOOK_KEY', 'MFA_KEY']) {
 			if (!have.includes(name)) put[name] = randomBytes(32).toString('base64'); // created once, never replaced
 		}
+		// Push alerts (VAPID). Created once: replacing it would silently break every browser's alert subscription.
+		if (!have.includes('VAPID_PRIVATE_KEY')) {
+			const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+			const j = await crypto.subtle.exportKey('jwk', kp.privateKey);
+			put.VAPID_PRIVATE_KEY = JSON.stringify({ kty: j.kty, crv: j.crv, x: j.x, y: j.y, d: j.d });
+		}
 		const admin = process.env.AUTOCONFIRM_ADMIN_TOKEN;
 		if (admin && admin.length >= 32) put.ADMIN_TOKEN = admin;
 		else if (!have.includes('ADMIN_TOKEN')) console.log('  ADMIN_TOKEN not set: the operator API (creating merchants) stays off.');
