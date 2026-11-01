@@ -88,17 +88,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Root(incomingLink: String?) {
     val ctx = LocalLifecycleOwner.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val app = context.app
     var tick by remember { mutableIntStateOf(0) }
     // Re-read settings state whenever the screen is visible (permissions change in system settings).
+    // While the app is on screen it also checks in every 30 s, so a phone removed in the dashboard
+    // shows "removed" here right away (in the background it checks every 5 min to save battery).
     LaunchedEffect(ctx) {
         ctx.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var lastCheck = 0L
             while (true) {
+                if (app.store.isPaired && System.currentTimeMillis() - lastCheck >= 30_000) {
+                    lastCheck = System.currentTimeMillis()
+                    launch { runCatching { Sync.heartbeat(context) } }
+                }
                 tick++
                 delay(2_000)
             }
         }
     }
-    val app = androidx.compose.ui.platform.LocalContext.current.app
     @Suppress("UNUSED_EXPRESSION") tick
     if (app.store.isPaired) StatusScreen(tick) { tick++ } else PairScreen(incomingLink, app.store.revoked) { tick++ }
 }
