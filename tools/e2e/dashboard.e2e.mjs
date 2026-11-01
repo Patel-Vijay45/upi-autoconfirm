@@ -135,6 +135,22 @@ async function main() {
 	await p.goto(`${DASH}/locations`);
 	ok((await p.getByTestId('phone').count()) === 1, 'locations: paired phone listed');
 
+	// ----- counter: "New payment" in the dashboard, QR, turns Paid by itself -----
+	await p.goto(`${DASH}/`);
+	await p.click('summary:has-text("New payment")');
+	await p.fill('input[name=amount]', '1');
+	await p.fill('input[name=note]', 'Counter test');
+	await p.click('button:has-text("Create and show QR")');
+	await p.getByTestId('pay-qr').waitFor();
+	ok(await p.getByTestId('pay-qr').locator('svg').isVisible(), 'counter: new payment shows a QR');
+	const shown = (await p.getByTestId('pay-qr').locator('.amount').textContent()).trim();
+	const [rs, ps] = shown.replace(/[₹,]/g, '').split('.');
+	const counterPaise = Number(rs) * 100 + Number(ps);
+	ok(counterPaise > 100 && counterPaise < 200, `counter: unique amount ${shown}`);
+	await signal(device, counterPaise);
+	await p.getByTestId('paid-banner').waitFor({ timeout: 15000 });
+	ok(true, 'counter: page turned Paid by itself after the phone signal');
+
 	// ----- payments: one auto-confirmed, one via the inbox -----
 	const auto = await api('POST', '/v1/payment_intents', { key: sk, body: { amount: 45000, order_id: 'ORD-501' } });
 	await signal(device, auto.unique_amount);
@@ -154,13 +170,13 @@ async function main() {
 	await p.getByText('Payment matched to the order.').waitFor();
 	ok(await p.getByText('Nothing to check').isVisible(), 'inbox: empty after matching');
 	await p.goto(`${DASH}/payments/${manual.id}`);
-	ok(await p.getByText('Marked paid by staff').isVisible(), 'detail: ORD-502 paid (manual)');
+	ok(await p.getByTestId('paid-banner').getByText('Marked paid by staff').isVisible(), 'detail: ORD-502 paid (manual)');
 	ok(await p.getByText('received ₹930.00').isVisible(), 'detail: shows amount mismatch');
 
 	// ----- reports + CSV -----
 	await p.goto(`${DASH}/reports`);
 	const total = (await p.getByTestId('total-received').textContent()).trim();
-	const expected = auto.unique_amount + 93000;
+	const expected = auto.unique_amount + 93000 + counterPaise;
 	ok(total === `₹${Math.floor(expected / 100).toLocaleString('en-IN')}.${String(expected % 100).padStart(2, '0')}`, `reports: received total ${total}`);
 	const csv = await p.request.get(`${DASH}/reports/payments.csv`);
 	const csvText = await csv.text();

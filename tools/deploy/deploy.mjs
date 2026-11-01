@@ -203,6 +203,19 @@ async function main() {
 	step(`Deploy API (${NAMES.api})`);
 	wrangler(['deploy', '-c', apiConfig, ...(DRY ? ['--dry-run', '--outdir', join(tmpdir(), 'ac-api-dry')] : [])]);
 
+	step('Parser rules (rules/parser-rules.json → KV "active")');
+	const rulesFile = join(ROOT, 'rules/parser-rules.json');
+	const rules = JSON.parse(readFileSync(rulesFile, 'utf8'));
+	if (!rules.version || !Array.isArray(rules.apps) || rules.apps.length === 0) die('rules/parser-rules.json needs a version and at least one app');
+	for (const app of rules.apps) {
+		if (!/^[a-z0-9_]{2,40}$/.test(app.id ?? '') || !app.packages?.length || !app.incoming?.length) die(`rules: app "${app.id}" is incomplete`);
+	}
+	if (DRY) console.log(`  rules ${rules.version} are valid (${rules.apps.map((a) => a.id).join(', ')})`);
+	else {
+		wrangler(['kv', 'key', 'put', 'active', '--path', rulesFile, '--namespace-id', kvId, '--remote']);
+		console.log(`  published rules ${rules.version}; phones pick them up within 15 min (or tap Retry in the app)`);
+	}
+
 	if (!DRY) {
 		step('Secrets');
 		const listed = wrangler(['secret', 'list', '-c', apiConfig, '--format', 'json'], { allowFail: true });

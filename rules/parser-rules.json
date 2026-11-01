@@ -1,0 +1,37 @@
+{
+  "version": "2026-11-01.1",
+  "_notes": {
+    "google_pay": "Verified 2026-11-01 from a real 'paid you' notification on Android: title '<payer> paid you ₹1.00', text = the payer's note.",
+    "phonepe": "UNVERIFIED guess. Replace with real wording when a screenshot is available.",
+    "paytm": "UNVERIFIED guess. Replace with real wording when a screenshot is available.",
+    "sms": "Bank SMS is deliberately not read yet: with the app alert it would report each payment twice."
+  },
+  "apps": [
+    {
+      "id": "google_pay",
+      "packages": ["com.google.android.apps.nbu.paisa.user", "com.google.android.apps.nbu.paisa.merchant"],
+      "incoming": [
+        { "field": "title", "regex": "^(.{1,80}?)\\s+paid you\\s+₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s*$", "payer": 1, "amount": 2 }
+      ],
+      "ignore": ["(?i)^you paid", "(?i)\\bpayment (?:failed|declined)\\b", "(?i)\\bcashback\\b", "(?i)\\brequested\\b"]
+    },
+    {
+      "id": "phonepe",
+      "packages": ["com.phonepe.app", "com.phonepe.app.business"],
+      "incoming": [
+        { "field": "any", "regex": "(?i)received\\s+(?:rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 },
+        { "field": "any", "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 }
+      ],
+      "ignore": ["(?i)\\bpaid to\\b", "(?i)\\bsent\\b", "(?i)\\bcashback\\b", "(?i)\\brefund", "(?i)\\brequest", "(?i)\\bfailed\\b"]
+    },
+    {
+      "id": "paytm",
+      "packages": ["net.one97.paytm", "com.paytm.business"],
+      "incoming": [
+        { "field": "any", "regex": "(?i)received\\s+(?:rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 },
+        { "field": "any", "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 }
+      ],
+      "ignore": ["(?i)\\bpaid to\\b", "(?i)\\bsent\\b", "(?i)\\bcashback\\b", "(?i)\\brefund", "(?i)\\brequest", "(?i)\\bfailed\\b"]
+    }
+  ]
+}

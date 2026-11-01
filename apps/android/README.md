@@ -28,9 +28,13 @@ Without them, the app uses normal HTTPS checks only.
 Release builds only accept `https://` API addresses. Debug builds also accept `http://10.0.2.2`, `localhost` and `127.0.0.1` for local testing with `wrangler dev`.
 
 ## Parser rules
-The app has no built-in rules. It downloads them from `GET /device/v1/parser_rules`, which serves the KV key `active`. A template is in [tools/rules/example.json](../../tools/rules/example.json). The package names and wording in it **must be checked on real phones** first. To publish rules locally:
+The app has no built-in rules. It downloads them from `GET /device/v1/parser_rules`, which serves the KV key `active`.
+- The live rules are in [rules/parser-rules.json](../../rules/parser-rules.json). Every deploy publishes them.
+- Google Pay's "paid you" alert is verified on a real phone (see `RealRulesTest`). PhonePe and Paytm are still unverified guesses.
+
+To publish rules locally:
 ```bash
-cd apps/api && npx wrangler kv key put --binding RULES --local active --path ../../tools/rules/example.json
+cd apps/api && npx wrangler kv key put --binding RULES --local active --path ../../rules/parser-rules.json
 ```
 
 ## Tests

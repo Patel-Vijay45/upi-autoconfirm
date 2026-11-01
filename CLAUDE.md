@@ -65,7 +65,8 @@ Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) a
   - Use `defaultValue` (not `value`) on form inputs, so text typed before hydration isn't wiped.
 - `db/schema.sql` is the full schema; `db/migrations/` holds applied migrations (add new numbered files only).
 - `apps/android`: Kotlin phone app (Gradle project, not part of npm workspaces). Pure logic in `parse/` and `net/` is unit-tested on the JVM.
-- `tools/device-sim.mjs`: signs and sends signals like the phone app. `tools/rules/example.json`: parser-rules template.
+- `rules/parser-rules.json`: the **live** parser rules. Every deploy publishes them to KV `active`; phones fetch them within 15 min. Add a real captured sample to `apps/android/.../RealRulesTest.kt` for every rule change.
+- `tools/device-sim.mjs`: signs and sends signals like the phone app. `tools/rules/example.json`: an older template.
 
 ## Commands
 - Install: `npm install`

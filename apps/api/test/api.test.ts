@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createExecutionContext, createMessageBatch, env, getQueueResult, runDurableObjectAlarm } from 'cloudflare:test';
 import { verifyWebhook } from '@autoconfirm/core';
 import worker from '../src/index.ts';
-import { app } from '../src/app.ts';
+import { app, shortPayer } from '../src/app.ts';
 import { locationObjectName } from '../src/location-do.ts';
 import { call, createIntent, deviceCall, newLocation, newMerchant, pairDevice, sendSignal, setup } from './helpers.ts';
 
@@ -374,5 +374,15 @@ describe('webhook delivery', () => {
 		} finally {
 			spy.mockRestore();
 		}
+	});
+});
+
+describe('payer names', () => {
+	it('are shortened to first name + initial, without titles', () => {
+		expect(shortPayer('Mr. Vijaykumar Patel')).toBe('Vijaykumar P');
+		expect(shortPayer('SMT ANITA SHAH')).toBe('Anita S');
+		expect(shortPayer('Ramesh')).toBe('Ramesh');
+		expect(shortPayer('Mr.')).toBe('Mr.');
+		expect(shortPayer('  ')).toBeNull();
 	});
 });
