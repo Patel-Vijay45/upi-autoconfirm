@@ -20,6 +20,8 @@ export interface Env {
 	CHECKOUT_BASE_URL: string;
 	/** Public base URL of this API, put in pairing links. Defaults to the request origin. */
 	PUBLIC_API_URL?: string;
+	/** VAPID private key (JWK JSON) for push alerts to dashboard users. Unset = push alerts off. */
+	VAPID_PRIVATE_KEY?: string;
 }
 
 /** Without endpointId the consumer fans out to each subscribed endpoint. */
@@ -27,4 +29,6 @@ export interface WebhookMessage {
 	eventId: string;
 	merchantId: string;
 	endpointId?: string;
+	/** Send this event as a push alert to one browser subscription instead of a webhook. */
+	pushId?: string;
 }

@@ -40,7 +40,12 @@ export interface Settings {
 	signalRetentionMs: number;
 	/** How long unresolved inbox signals (unmatched / ambiguous / review) stay assignable. */
 	inboxRetentionMs: number;
+	/** Flag unmatched payments that aren't near any recent order as likely walk-ins (shown apart from the inbox). */
+	walkInFilter: boolean;
 }
+
+/** An unmatched payment within this many paise of a recent order (or equal to its base amount) needs a look. */
+export const WALK_IN_NEAR_PAISE = 100;
 
 export const DEFAULT_SETTINGS: Settings = {
 	offsetMode: 'add_paise',
@@ -58,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	undoWindowMs: DAY,
 	signalRetentionMs: 2 * DAY,
 	inboxRetentionMs: 30 * DAY,
+	walkInFilter: true,
 };
 
 export interface Intent {
@@ -101,6 +107,11 @@ export interface Signal {
 	intentId: string | null;
 	duplicateOf: string | null;
 	note: string | null;
+	/**
+	 * Unmatched and not near any recent order: probably a walk-in customer paying the shop directly.
+	 * Only a display hint (the payment is still listed and can be matched); never affects matching.
+	 */
+	walkIn: boolean;
 	updatedAt: number;
 }
 
@@ -215,7 +226,7 @@ export class LocationEngine {
 	) {
 		for (const i of state?.intents ?? []) this.intents.set(i.id, { ...i });
 		for (const s of state?.signals ?? []) {
-			this.signals.set(s.id, { ...s });
+			this.signals.set(s.id, { ...s, walkIn: s.walkIn ?? false }); // older snapshots have no walkIn
 			this.fingerprints.set(s.fingerprint, s.id);
 		}
 	}
@@ -351,6 +362,7 @@ export class LocationEngine {
 			intentId: null,
 			duplicateOf: null,
 			note: null,
+			walkIn: false,
 			updatedAt: now,
 		};
 		this.signals.set(signal.id, signal);
@@ -398,6 +410,7 @@ export class LocationEngine {
 			}
 		} else if (candidates.length === 0) {
 			signal.status = 'unmatched';
+			signal.walkIn = s.walkInFilter && !this.nearRecentOrder(signal.amount, now);
 			tx.signal(signal, now);
 			tx.emit({ type: 'signal.unmatched', signalId: signal.id, reason: 'no_match' });
 		} else {
@@ -438,6 +451,7 @@ export class LocationEngine {
 		if (signal.status !== 'review') throw new EngineError('invalid_state', `signal is ${signal.status}`);
 		signal.status = 'unmatched';
 		signal.intentId = null;
+		signal.walkIn = false;
 		signal.note = note ?? 'rejected';
 		tx.signal(signal, now);
 		tx.emit({ type: 'signal.unmatched', signalId, reason: 'rejected' });
@@ -498,6 +512,7 @@ export class LocationEngine {
 			const sig = this.signals.get(intent.matchedSignalId);
 			if (sig && sig.status === 'matched' && sig.intentId === intent.id) {
 				sig.status = 'unmatched';
+				sig.walkIn = false;
 				sig.intentId = null;
 				sig.note = 'unpaid';
 				tx.signal(sig, now);
@@ -573,6 +588,7 @@ export class LocationEngine {
 		for (const sig of this.signals.values()) {
 			if (sig.status === 'review' && sig.intentId === intentId && sig.id !== exceptSignalId) {
 				sig.status = 'unmatched';
+				sig.walkIn = false;
 				sig.intentId = null;
 				sig.note = 'intent_closed';
 				tx.signal(sig, now);
@@ -646,6 +662,15 @@ export class LocationEngine {
 		if (i.status === 'paid' && i.paidAt !== null) t = Math.max(t, i.paidAt + this.settings.undoWindowMs);
 		if (i.status === 'expired') t = Math.max(t, i.expiresAt + this.settings.graceMs);
 		return t;
+	}
+
+	/** Is an open or recently closed order (amount still reserved) close to this amount? */
+	private nearRecentOrder(amount: number, now: number): boolean {
+		for (const i of this.intents.values()) {
+			if (!this.reserves(i, now)) continue;
+			if (Math.abs(amount - i.uniqueAmount) <= WALK_IN_NEAR_PAISE || amount === i.amount) return true;
+		}
+		return false;
 	}
 
 	private signalPruneAt(sig: Signal): number {

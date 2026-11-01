@@ -127,7 +127,13 @@ export function mount(root: HTMLElement, view: CheckoutView, cfg: MountConfig): 
 	const onClaim = () => {
 		if (!claimedAt) {
 			claimedAt = Date.now();
-			fetch(cfg.claimUrl, { method: 'POST', headers: cfg.headers ?? {} }).catch(() => undefined);
+			fetch(cfg.claimUrl, { method: 'POST', headers: cfg.headers ?? {} })
+				.then((r) => r.json())
+				.then((j: { phone_offline?: boolean }) => {
+					// The shop's phone is offline: say "show this screen at the counter" now, not after 2 min.
+					if (j.phone_offline) (claimedAt -= STILL_CHECKING_MS + 1), render();
+				})
+				.catch(() => undefined);
 		}
 		render();
 		void check();

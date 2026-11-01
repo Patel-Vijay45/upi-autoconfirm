@@ -142,6 +142,7 @@ async function main() {
 	const device = await api('POST', '/device/v1/enroll', { body: { pairing_code: code, device_info: { label: 'Counter phone' } } });
 	await p.goto(`${DASH}/locations`);
 	ok((await p.getByTestId('phone').count()) === 1, 'locations: paired phone listed');
+	ok(await p.getByTestId('alerts-card').getByText('Alerts on this phone').isVisible(), 'locations: alerts card shown');
 
 	// ----- counter: "New payment" in the dashboard, QR, turns Paid by itself -----
 	await p.goto(`${DASH}/`);
@@ -177,6 +178,18 @@ async function main() {
 	await card.locator('form', { hasText: 'ORD-502' }).getByRole('button', { name: 'Match' }).click();
 	await p.getByText('Payment matched to the order.').waitFor();
 	ok(await p.getByText('Nothing to check').isVisible(), 'inbox: empty after matching');
+
+	// ----- inbox: a walk-in payment stays out of "Needs a look" -----
+	await signal(device, 6000); // ₹60, not near any order
+	await p.goto(`${DASH}/inbox`);
+	ok(await p.getByText('Nothing to check').isVisible(), 'inbox: walk-in not in "Needs a look"');
+	await p.getByTestId('tab-other').click();
+	await p.waitForURL(/tab=other/);
+	const walk = p.getByTestId('signal').filter({ hasText: '₹60.00' });
+	ok((await walk.count()) === 1 && (await walk.getByText('Walk-in').isVisible()), 'inbox: walk-in listed under Other payments');
+	await walk.getByText('Match to an order…').click();
+	await p.waitForURL(/open=sig_/);
+	ok(await p.getByTestId('signal').filter({ hasText: '₹60.00' }).getByText(/No open orders near this amount|Possible orders/).isVisible(), 'inbox: a walk-in can still be matched');
 	await p.goto(`${DASH}/payments/${manual.id}`);
 	ok(await p.getByTestId('paid-banner').getByText('Marked paid by staff').isVisible(), 'detail: ORD-502 paid (manual)');
 	ok(await p.getByText('received ₹930.00').isVisible(), 'detail: shows amount mismatch');
@@ -184,6 +197,7 @@ async function main() {
 	// ----- reports + CSV -----
 	await p.goto(`${DASH}/reports`);
 	const total = (await p.getByTestId('total-received').textContent()).trim();
+	ok((await p.getByTestId('walk-in-total').textContent()).includes('₹60.00'), 'reports: walk-in payments counted separately');
 	const expected = auto.unique_amount + 93000 + counterPaise;
 	ok(total === `₹${Math.floor(expected / 100).toLocaleString('en-IN')}.${String(expected % 100).padStart(2, '0')}`, `reports: received total ${total}`);
 	const csv = await p.request.get(`${DASH}/reports/payments.csv`);
@@ -215,10 +229,12 @@ async function main() {
 	// ----- settings: limit + invite staff -----
 	await p.goto(`${DASH}/settings`);
 	await p.fill('input[name=auto_confirm_max]', '2000');
+	await p.uncheck('input[name=walk_in_filter]');
 	await p.click('button:has-text("Save")');
 	await p.getByText('Settings saved.').waitFor();
 	const limit = await p.inputValue('input[name=auto_confirm_max]');
 	ok(limit === '2000.00', `settings: auto-confirm limit saved (${limit})`);
+	ok(!(await p.isChecked('input[name=walk_in_filter]')), 'settings: walk-in filter can be turned off');
 	const staffEmail = `staff-${n}@shop.example`;
 	await p.fill('input[name=email]', staffEmail);
 	await p.click('button:has-text("Invite")');

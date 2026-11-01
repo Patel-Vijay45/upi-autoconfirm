@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '$lib/styles.css';
 	import { page } from '$app/state';
-	import { can } from '$lib/format.ts';
+	import { ago, can } from '$lib/format.ts';
 
 	let { data, children } = $props();
 	const role = $derived(data.me?.user.role);
@@ -40,6 +40,11 @@
 				<a href={n.href} aria-current={current(n.href) ? 'page' : undefined}>{n.label}</a>
 			{/each}
 		</nav>
+		{#each data.me.phones_offline ?? [] as d (d.id)}
+			<div class="offlinebar" role="alert" data-testid="phone-offline">
+				📵 <strong>{d.label}</strong> ({d.location_name}) is offline (last seen {ago(d.last_heartbeat_at)}). Payments there won't be confirmed automatically. Check its battery, internet and notification access. <a href="/locations">Counters & phones</a>
+			</div>
+		{/each}
 		{#if data.mode === 'test'}<div class="testbar">Test mode: you are seeing test payments and test phones only.</div>{/if}
 	</header>
 {/if}
@@ -57,4 +62,6 @@
 	nav a { white-space: nowrap; padding: .4rem .75rem; border-radius: 999px; text-decoration: none; color: var(--fg); }
 	nav a[aria-current='page'] { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 	.testbar { background: var(--test); color: #fff; text-align: center; font-size: .85rem; padding: .25rem; }
+	.offlinebar { background: var(--bad-soft); color: var(--bad); font-size: .9rem; padding: .5rem 1rem; border-bottom: 1px solid currentColor; }
+	.offlinebar a { color: inherit; font-weight: 600; }
 </style>

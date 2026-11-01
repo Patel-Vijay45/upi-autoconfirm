@@ -6,7 +6,10 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import app.autoconfirm.work.Health
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -98,9 +101,10 @@ private fun Root(incomingLink: String?) {
         ctx.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             var lastCheck = 0L
             while (true) {
-                if (app.store.isPaired && System.currentTimeMillis() - lastCheck >= 30_000) {
+                if (System.currentTimeMillis() - lastCheck >= 30_000) {
                     lastCheck = System.currentTimeMillis()
-                    launch { runCatching { Sync.heartbeat(context) } }
+                    Health.check(context) // clears the "can't see payments" warning once fixed
+                    if (app.store.isPaired) launch { runCatching { Sync.heartbeat(context) } }
                 }
                 tick++
                 delay(2_000)
@@ -176,6 +180,7 @@ private fun StatusScreen(tick: Int, refresh: () -> Unit) {
     val waiting by a.db.payments().outboxCountFlow().collectAsState(initial = 0)
     var showDisclosure by remember { mutableStateOf(false) }
     var confirmUnpair by remember { mutableStateOf(false) }
+    val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh() }
 
     @Suppress("UNUSED_EXPRESSION") tick
     val listenerOn = Sync.listenerEnabled(context)
@@ -218,6 +223,13 @@ private fun StatusScreen(tick: Int, refresh: () -> Unit) {
             item { Text("Setup checklist", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
             item {
                 CheckItem("Notification access is ON", listenerOn, "Turn on") { showDisclosure = true }
+            }
+            if (Build.VERSION.SDK_INT >= 33) {
+                item {
+                    CheckItem("Warnings on this phone allowed (if it stops seeing payments)", Health.canNotify(context), "Allow") {
+                        askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
             }
             item {
                 CheckItem("Battery optimisation is OFF for AutoConfirm", batteryOk, "Fix") {
@@ -297,6 +309,7 @@ private fun StatusScreen(tick: Int, refresh: () -> Unit) {
                             a.db.clearAllTables()
                         }
                         a.store.clear()
+                        Health.clear(context)
                         refresh()
                     }
                 }) { Text("Unpair") }

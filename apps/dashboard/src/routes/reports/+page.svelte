@@ -18,16 +18,17 @@
 	<div class="card grow"><div class="muted small">Received</div><div class="amount big" data-testid="total-received">{inr(r.total.received)}</div></div>
 	<div class="card grow"><div class="muted small">Paid orders</div><div class="amount big">{r.total.paid_count}</div><div class="small muted">{r.total.auto_count} confirmed automatically</div></div>
 	<div class="card grow"><div class="muted small">Still in inbox</div><div class="amount big">{r.total.open_inbox}</div></div>
+	<div class="card grow" data-testid="walk-in-total"><div class="muted small">Other payments (walk-ins)</div><div class="amount big">{inr(r.total.walk_in_received)}</div><div class="small muted">{r.total.walk_in_count} payments</div></div>
 </div>
 
 <div class="card table-wrap">
 	<table>
-		<thead><tr><th>Day (IST)</th><th>Paid orders</th><th>Received</th><th>Auto</th><th>Late</th><th>Inbox</th></tr></thead>
+		<thead><tr><th>Day (IST)</th><th>Paid orders</th><th>Received</th><th>Auto</th><th>Late</th><th>Inbox</th><th>Walk-ins</th></tr></thead>
 		<tbody>
 			{#each r.days as d (d.day)}
-				<tr><td>{d.day}</td><td>{d.paid_count}</td><td class="amount">{inr(d.received)}</td><td>{d.auto_count}</td><td>{d.late_count}</td><td>{d.open_inbox}</td></tr>
+				<tr><td>{d.day}</td><td>{d.paid_count}</td><td class="amount">{inr(d.received)}</td><td>{d.auto_count}</td><td>{d.late_count}</td><td>{d.open_inbox}</td><td class="amount">{d.walk_in_count ? inr(d.walk_in_received) : ''}</td></tr>
 			{:else}
-				<tr><td colspan="6" class="muted small">No payments in this period.</td></tr>
+				<tr><td colspan="7" class="muted small">No payments in this period.</td></tr>
 			{/each}
 		</tbody>
 	</table>

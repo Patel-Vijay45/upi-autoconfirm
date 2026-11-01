@@ -21,6 +21,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
     override suspend fun doWork(): Result {
         val ctx = applicationContext
         if (!ctx.app.store.isPaired) return Result.success()
+        Health.check(ctx)
         return try {
             runCatching { Sync.refreshRules(ctx) }
             Sync.flush(ctx)
@@ -58,6 +59,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             if (context.app.store.isPaired) {
+                Health.check(context)
                 SyncWorker.schedule(context)
                 SyncWorker.runSoon(context)
             }

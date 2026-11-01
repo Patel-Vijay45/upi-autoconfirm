@@ -13,8 +13,8 @@ android {
         applicationId = "app.autoconfirm"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
         // Optional certificate pinning for the API host: "host" and comma-separated "sha256/..." pins
         // (primary + backup). Empty = no pinning. Set these in your release build.
         buildConfigField("String", "PIN_HOST", "\"${project.findProperty("autoconfirm.pinHost") ?: ""}\"")

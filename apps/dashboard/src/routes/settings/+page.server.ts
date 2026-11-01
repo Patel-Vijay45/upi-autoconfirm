@@ -20,6 +20,7 @@ export const actions: Actions = {
 				auto_confirm_max: max,
 				intent_ttl: Number(f.intent_ttl) * 60,
 				max_intent_ttl: Number(f.max_intent_ttl) * 60,
+				walk_in_filter: f.walk_in_filter === 'on',
 			});
 			return { done: 'Settings saved.' };
 		});

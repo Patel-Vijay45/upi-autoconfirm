@@ -12,7 +12,9 @@ AutoConfirm is a **standalone, reusable service**. Any number of projects (onlin
 ## Step 1: Core service (API + matching engine) ✅ built
 **Not done yet (small follow-ups):**
 - Rate limits (60 req/s per merchant, 10 signals/s per device).
-- Cron jobs: device-offline alerts (`device.offline` / `device.online`), clean-up of old idempotency rows, data retention.
+- ✅ Phone-offline alerts (`device.offline` / `device.online`): 5-minute cron, Web Push to dashboard users, dashboard banner.
+- ✅ Walk-in filter: unmatched payments far from any order go to Inbox → Other payments.
+- Cron jobs still to do: clean-up of old idempotency rows, data retention.
 - Key rotation and revoke endpoints (keys can be revoked in D1 for now).
 - Parser-rule publishing tool (rules are read from KV key `active`).
 

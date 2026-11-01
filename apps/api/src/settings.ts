@@ -26,6 +26,7 @@ export function settingsFromJson(json: string | null | undefined): Settings {
 	else if (int('auto_confirm_max') !== undefined) s.autoConfirmMax = Math.max(0, int('auto_confirm_max')!);
 	s.minAmount = Math.max(100, int('min_amount') ?? s.minAmount);
 	s.maxAmount = Math.min(10_000_000, int('max_amount') ?? s.maxAmount);
+	if (typeof raw.walk_in_filter === 'boolean') s.walkInFilter = raw.walk_in_filter;
 	if (s.intentTtlMs > s.maxIntentTtlMs) s.maxIntentTtlMs = s.intentTtlMs;
 	return s;
 }

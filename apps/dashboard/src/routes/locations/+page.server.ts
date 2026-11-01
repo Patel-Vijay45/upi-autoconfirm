@@ -3,8 +3,8 @@ import { api, load as get } from '$lib/server/api.ts';
 import { form, run } from '$lib/server/actions.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const [locations, devices] = await Promise.all([get(event, '/v1/locations'), get(event, '/v1/devices')]);
-	return { locations: locations.data, devices: devices.data };
+	const [locations, devices, push] = await Promise.all([get(event, '/v1/locations'), get(event, '/v1/devices'), get(event, '/v1/push/config')]);
+	return { locations: locations.data, devices: devices.data, push: push as { enabled: boolean; public_key: string | null } };
 };
 
 export const actions: Actions = {

@@ -7,6 +7,7 @@ import {
 	decryptSecret,
 	encryptSecret,
 	formatPaise,
+	isPushEndpoint,
 	newTotpSecret,
 	otpauthUri,
 	qrSvg,
@@ -14,6 +15,7 @@ import {
 	randomSecret,
 	sha256Hex,
 	timingSafeEqual,
+	unb64url,
 	verifyTotp,
 } from '@autoconfirm/core';
 import type { Env } from './env.ts';
@@ -24,6 +26,8 @@ import { PASSWORD_MIN } from './passwords.ts';
 import { passwordHasher } from './password-do.ts';
 import { iso } from './present.ts';
 import { settingsFromJson } from './settings.ts';
+import { OFFLINE_AFTER_MS } from './alerts.ts';
+import { pushPublicKey, sendPush } from './push.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
 type Ctx = Context<AppEnv>;
@@ -157,7 +161,7 @@ async function loadInvite(env: Env, token: string) {
 
 function deviceStatus(d: { status: string; last_heartbeat_at: number | null }, now: number): string {
 	if (d.status === 'revoked' || d.status === 'pending') return d.status;
-	return d.last_heartbeat_at !== null && now - d.last_heartbeat_at < 11 * 60_000 ? 'online' : 'offline';
+	return d.last_heartbeat_at !== null && now - d.last_heartbeat_at < OFFLINE_AFTER_MS ? 'online' : 'offline';
 }
 
 const IST_MS = 19_800_000;
@@ -199,6 +203,7 @@ const UpdateSettings = z
 		grace_window: z.number().int().min(0).max(21_600).optional(),
 		reuse_cooldown: z.number().int().min(600).max(86_400).optional(),
 		max_offset: z.number().int().min(1).max(99).optional(),
+		walk_in_filter: z.boolean().optional(),
 	})
 	.strict();
 
@@ -253,7 +258,19 @@ export function registerDashboard(app: Hono<AppEnv>) {
 			.bind(auth.userId, auth.merchantId)
 			.first<{ id: string; email: string; role: Role; mfa: number; merchant_id: string; name: string }>();
 		if (!u) throw unauthorized();
-		return c.json({ user: { id: u.id, email: u.email, role: u.role, mfa: u.mfa === 1 }, merchant: { id: u.merchant_id, name: u.name }, livemode: auth.livemode });
+		// Phones that stopped checking in (shown as a banner on every page).
+		const off = await c.env.DB.prepare(
+			`SELECT d.id, d.label, d.last_heartbeat_at, l.name AS location_name FROM devices d JOIN locations l ON l.id = d.location_id AND l.merchant_id = d.merchant_id
+			 WHERE d.merchant_id = ? AND d.livemode = ? AND d.status IN ('online', 'offline') AND l.active = 1 AND (d.last_heartbeat_at IS NULL OR d.last_heartbeat_at < ?) LIMIT 20`,
+		)
+			.bind(auth.merchantId, auth.livemode ? 1 : 0, Date.now() - OFFLINE_AFTER_MS)
+			.all<{ id: string; label: string; last_heartbeat_at: number | null; location_name: string }>();
+		return c.json({
+			user: { id: u.id, email: u.email, role: u.role, mfa: u.mfa === 1 },
+			merchant: { id: u.merchant_id, name: u.name },
+			livemode: auth.livemode,
+			phones_offline: off.results.map((d) => ({ id: d.id, label: d.label, location_name: d.location_name, last_heartbeat_at: iso(d.last_heartbeat_at) })),
+		});
 	});
 
 	// ----- invites: set a password (and enrol TOTP) from a one-time link -----
@@ -330,6 +347,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		await c.env.DB.batch([
 			c.env.DB.prepare('UPDATE users SET active = 0 WHERE id = ? AND merchant_id = ?').bind(id, auth.merchantId),
 			c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND merchant_id = ?').bind(id, auth.merchantId),
+			c.env.DB.prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND merchant_id = ?').bind(id, auth.merchantId),
 		]);
 		await audit(c.env, auth, c, 'user.deactivate', id);
 		return c.json({ id, object: 'user', active: false });
@@ -506,18 +524,30 @@ export function registerDashboard(app: Hono<AppEnv>) {
 			.bind(auth.merchantId, auth.livemode ? 1 : 0, start, end, ...locArg)
 			.all<{ day: string; paid_count: number; amount: number; received: number; auto_count: number; late_count: number; mismatch_count: number }>();
 		const inbox = await c.env.DB.prepare(
-			`SELECT date((received_at + ${IST_MS}) / 1000, 'unixepoch') AS day, COUNT(*) AS n FROM signals pi
-			 WHERE merchant_id = ? AND livemode = ? AND status IN ('unmatched', 'ambiguous', 'review') AND received_at >= ? AND received_at < ? ${loc}
+			`SELECT date((received_at + ${IST_MS}) / 1000, 'unixepoch') AS day,
+			        SUM(CASE WHEN status IN ('unmatched', 'ambiguous', 'review') AND walk_in = 0 THEN 1 ELSE 0 END) AS n,
+			        SUM(CASE WHEN walk_in = 1 AND status IN ('unmatched', 'ignored') THEN 1 ELSE 0 END) AS walk_in_count,
+			        SUM(CASE WHEN walk_in = 1 AND status IN ('unmatched', 'ignored') THEN amount ELSE 0 END) AS walk_in_amount
+			 FROM signals pi
+			 WHERE merchant_id = ? AND livemode = ? AND status IN ('unmatched', 'ambiguous', 'review', 'ignored') AND received_at >= ? AND received_at < ? ${loc}
 			 GROUP BY day`,
 		)
 			.bind(auth.merchantId, auth.livemode ? 1 : 0, start, end, ...locArg)
-			.all<{ day: string; n: number }>();
-		const open = new Map(inbox.results.map((r) => [r.day, r.n]));
-		const days = paid.results.map((d) => ({ ...d, open_inbox: open.get(d.day) ?? 0, received_display: formatPaise(d.received) }));
-		for (const [day, n] of open) if (!days.some((d) => d.day === day)) days.push({ day, paid_count: 0, amount: 0, received: 0, auto_count: 0, late_count: 0, mismatch_count: 0, open_inbox: n, received_display: '0.00' });
+			.all<{ day: string; n: number; walk_in_count: number; walk_in_amount: number }>();
+		const open = new Map(inbox.results.map((r) => [r.day, r]));
+		const empty = { n: 0, walk_in_count: 0, walk_in_amount: 0 };
+		const row = (d: { day: string; paid_count: number; amount: number; received: number; auto_count: number; late_count: number; mismatch_count: number }) => {
+			const o = open.get(d.day) ?? empty;
+			return { ...d, received_display: formatPaise(d.received), open_inbox: o.n, walk_in_count: o.walk_in_count, walk_in_received: o.walk_in_amount, walk_in_received_display: formatPaise(o.walk_in_amount) };
+		};
+		const days = paid.results.map(row);
+		for (const day of open.keys()) if (!days.some((d) => d.day === day)) days.push(row({ day, paid_count: 0, amount: 0, received: 0, auto_count: 0, late_count: 0, mismatch_count: 0 }));
 		days.sort((a, b) => a.day.localeCompare(b.day));
-		const total = days.reduce((t, d) => ({ paid_count: t.paid_count + d.paid_count, received: t.received + d.received, auto_count: t.auto_count + d.auto_count, open_inbox: t.open_inbox + d.open_inbox }), { paid_count: 0, received: 0, auto_count: 0, open_inbox: 0 });
-		return c.json({ object: 'report', from: istDate(start), to: istDate(end - 1), days, total: { ...total, received_display: formatPaise(total.received) } });
+		const total = days.reduce(
+			(t, d) => ({ paid_count: t.paid_count + d.paid_count, received: t.received + d.received, auto_count: t.auto_count + d.auto_count, open_inbox: t.open_inbox + d.open_inbox, walk_in_count: t.walk_in_count + d.walk_in_count, walk_in_received: t.walk_in_received + d.walk_in_received }),
+			{ paid_count: 0, received: 0, auto_count: 0, open_inbox: 0, walk_in_count: 0, walk_in_received: 0 },
+		);
+		return c.json({ object: 'report', from: istDate(start), to: istDate(end - 1), days, total: { ...total, received_display: formatPaise(total.received), walk_in_received_display: formatPaise(total.walk_in_received) } });
 	});
 
 	app.get('/v1/reports/payments.csv', async (c) => {
@@ -566,6 +596,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 			auto_confirm_max: s.autoConfirmMax,
 			min_amount: s.minAmount,
 			max_amount: s.maxAmount,
+			walk_in_filter: s.walkInFilter,
 		};
 	};
 
@@ -591,6 +622,70 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		await c.env.DB.prepare('UPDATE merchants SET settings = ? WHERE id = ?').bind(next, auth.merchantId).run();
 		await audit(c.env, auth, c, 'settings.update', auth.merchantId, body);
 		return c.json(settingsView(next));
+	});
+
+	// ----- push alerts on this browser (dashboard users only) -----
+
+	const b64urlBytes = (s: string, n: number) => {
+		try {
+			return unb64url(s).length === n;
+		} catch {
+			return false;
+		}
+	};
+	const PushSubscription = z
+		.object({
+			endpoint: z.string().max(1000).refine(isPushEndpoint, 'not a supported push service'),
+			keys: z.object({ p256dh: z.string().max(200).refine((s) => b64urlBytes(s, 65), 'bad p256dh'), auth: z.string().max(100).refine((s) => b64urlBytes(s, 16), 'bad auth') }),
+			label: z.string().max(80).optional(),
+		})
+		.strip();
+
+	app.get('/v1/push/config', (c) => {
+		const key = pushPublicKey(c.env);
+		return c.json({ object: 'push_config', enabled: key !== null, public_key: key });
+	});
+
+	app.post('/v1/push_subscriptions', async (c) => {
+		const auth = c.get('auth');
+		const userId = requireSession(auth);
+		if (!pushPublicKey(c.env)) throw new ApiError(422, 'invalid_request', 'push_not_configured', 'push alerts are not set up on this server');
+		const body = parse(await readBody(c), PushSubscription);
+		const now = Date.now();
+		// One row per browser: subscribing again (or as another user on the same browser) replaces it.
+		await c.env.DB.prepare(
+			`INSERT INTO push_subscriptions (id, merchant_id, user_id, endpoint, p256dh, auth, label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(endpoint) DO UPDATE SET merchant_id = excluded.merchant_id, user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label, created_at = excluded.created_at`,
+		)
+			.bind(randomId('psub'), auth.merchantId, userId, body.endpoint, body.keys.p256dh, body.keys.auth, body.label ?? null, now)
+			.run();
+		await audit(c.env, auth, c, 'push.subscribe', userId, { label: body.label ?? null });
+		return c.json({ object: 'push_subscription', subscribed: true }, 201);
+	});
+
+	app.post('/v1/push_subscriptions/delete', async (c) => {
+		const auth = c.get('auth');
+		const userId = requireSession(auth);
+		const body = parse(await readBody(c), z.object({ endpoint: z.string().max(1000) }).strict());
+		await c.env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND merchant_id = ? AND user_id = ?').bind(body.endpoint, auth.merchantId, userId).run();
+		return c.json({ object: 'push_subscription', subscribed: false });
+	});
+
+	/** Sends a test alert to the signed-in user's browsers. */
+	app.post('/v1/push_subscriptions/test', async (c) => {
+		const auth = c.get('auth');
+		const userId = requireSession(auth);
+		if (!pushPublicKey(c.env)) throw new ApiError(422, 'invalid_request', 'push_not_configured', 'push alerts are not set up on this server');
+		const subs = await c.env.DB.prepare('SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE merchant_id = ? AND user_id = ? LIMIT 10')
+			.bind(auth.merchantId, userId)
+			.all<{ id: string; endpoint: string; p256dh: string; auth: string }>();
+		let sent = 0;
+		for (const s of subs.results) {
+			const status = await sendPush(c.env, s, { title: '🔔 AutoConfirm alerts are on', body: "You'll get an alert here when a counter phone goes offline or a payment needs a look.", url: '/locations', tag: 'test' }).catch(() => null);
+			if (status !== null && status >= 200 && status < 300) sent++;
+			else if (status === 404 || status === 410) await c.env.DB.prepare('DELETE FROM push_subscriptions WHERE id = ? AND merchant_id = ?').bind(s.id, auth.merchantId).run();
+		}
+		return c.json({ object: 'push_test', subscriptions: subs.results.length, sent });
 	});
 
 	// ----- audit log -----

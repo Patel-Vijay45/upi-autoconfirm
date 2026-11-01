@@ -101,6 +101,8 @@ Errors: `409 slots_exhausted` (see MATCHING §1.2), `422 location_not_ready` (no
 
 ## 4. Signals (what the phone saw)
 - `GET /v1/signals?status=unmatched`: the inbox. Also `status=review` (waiting for staff) and `status=ambiguous`.
+  - Add `walk_in=false` for payments that need a look, or `walk_in=true` for likely walk-ins (MATCHING §3a).
+  - Each signal has `likely_walk_in`: `true` when it matched nothing and wasn't near any recent order. It's a display hint only; such a signal can still be matched.
 - `POST /v1/signals/:id/assign` with `{"payment_intent": "pi_…"}`: manual match. If amounts differ, `amount_mismatch` is set and both amounts are recorded.
   - For a `review` signal this is the **Confirm** step. The suggested intent is in the signal's `payment_intent` field.
 - `POST /v1/signals/:id/reject` with `{"reason": "…"}`: for a `review` signal. It becomes `unmatched`, and the intent stays `pending`.
@@ -116,6 +118,7 @@ All with the publishable key, and CORS-enabled for any origin:
   - Browsers can't set headers on WebSockets, which is why the key goes in the query.
   - Up to 10 connections per intent. Send `ping` to get `pong`.
 - **Polling fallback:** `GET /v1/public/payment_intents/:id/status` returns `{status, display_amount, paid_at, expires_at}`. Poll every 3 s at most.
+- **"I have paid":** `POST /v1/public/payment_intents/:id/claim` returns the same plus `phone_offline`. When it's `true`, no phone at that counter is online, so tell the customer to show the screen at the counter instead of waiting.
 - Public responses never include customer personal data or the payer name.
 
 ## 5a. Hosted checkout page
@@ -138,9 +141,9 @@ Configure endpoints in the dashboard or with `POST /v1/webhook_endpoints {url, e
 | `payment_intent.expired` | TTL passed (and grace window over) |
 | `payment_intent.cancelled` | Cancelled |
 | `payment_intent.unpaid` | Merchant undid a paid status |
-| `signal.unmatched` | Money arrived that matched nothing (or matched ambiguously) |
+| `signal.unmatched` | Money arrived that matched nothing (or matched ambiguously). `data.object.likely_walk_in` says whether it looks like a walk-in rather than an order |
 | `signal.review_required` | Money matched an intent above `auto_confirm_max`; staff must confirm (MATCHING §5) |
-| `device.offline` / `device.online` | Phone heartbeat lost or restored |
+| `device.offline` / `device.online` | A phone stopped checking in for 11 min (checked every 5 min, and at once when a payment is created at its counter), or came back. `data.object` is `{id, object: "device", label, location_id, livemode, status, last_heartbeat_at}` |
 | `device.parse_failed` | Phone saw a payment notification it couldn't read |
 
 ### Payload
@@ -201,7 +204,7 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
 |---|---|
 | `POST /device/v1/enroll` `{pairing_code, device_info}` | Pair the phone, which receives `device_id` and `device_secret` (once) |
 | `POST /device/v1/signals` | Batch of parsed notifications (signed) |
-| `POST /device/v1/heartbeat` | Every 5 min: listener status, app versions, queue size, battery-optimisation state, phone clock (`device_time`). The server stores `clock_offset` from it. |
+| `POST /device/v1/heartbeat` | Every 5 min (every 30 s while the app is on screen): listener status, app versions, queue size, battery-optimisation state, phone clock (`device_time`). The server stores `clock_offset` from it, and sends `device.online` if the phone had been marked offline. |
 | `POST /device/v1/unpair` `{}` | The phone unpairs itself (signed). The server marks it revoked at once. Removing the phone in the dashboard does the same from the other side: the phone's next request gets `401` and the app shows "removed, pair again". |
 | `GET /device/v1/parser_rules?version=` | Current parser rules (ETag-cached) |
 | `POST /device/v1/parse_failures` | *(Planned, not built.)* Redacted notification text that matched a payment app but couldn't be parsed; opt-in. |
@@ -258,7 +261,14 @@ The dashboard (`apps/dashboard`) uses these. They also work for your own tools.
 - Reports (IST days, up to 92 at a time):
   - `GET /v1/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD`.
   - `GET /v1/reports/payments.csv?from&to`. Cells that start with `= + - @` are prefixed with `'` so spreadsheets don't run them as formulas.
-- Settings: `GET /v1/settings`, and `POST /v1/settings {auto_confirm_max, intent_ttl, max_intent_ttl, grace_window, reuse_cooldown, max_offset}` (session, owner/admin; times in seconds).
+- Settings: `GET /v1/settings`, and `POST /v1/settings {auto_confirm_max, intent_ttl, max_intent_ttl, grace_window, reuse_cooldown, max_offset, walk_in_filter}` (session, owner/admin; times in seconds).
+- Reports: `summary` also has `walk_in_count` and `walk_in_received` (likely walk-ins); `open_inbox` counts only payments that need a look.
+- Offline phones: `GET /dashboard/v1/me` includes `phones_offline: [{id, label, location_name, last_heartbeat_at}]` (the dashboard's red banner).
+- Push alerts (signed-in users; live-mode events only):
+  - `GET /v1/push/config` returns `{enabled, public_key}` (the VAPID key for `pushManager.subscribe`).
+  - `POST /v1/push_subscriptions {endpoint, keys: {p256dh, auth}, label?}`: this browser gets alerts. Only real push services are accepted (Google, Mozilla, Apple, Microsoft).
+  - `POST /v1/push_subscriptions/delete {endpoint}` and `POST /v1/push_subscriptions/test` (sends a test alert to your own browsers).
+  - Alerts: phone offline / back online, `signal.review_required`, and `signal.unmatched` unless it's a likely walk-in.
 - Activity log: `GET /v1/audit_log`.
 - Inbox help: `GET /v1/signals/:id` includes `suggestions`, the closest open orders by amount and time.
 

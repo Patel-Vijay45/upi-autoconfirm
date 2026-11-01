@@ -3,7 +3,11 @@
 	import { autoRefresh } from '$lib/auto-refresh.svelte.ts';
 	import { inr, when, STATUS_LABEL } from '$lib/format.ts';
 	let { data, form } = $props();
-	let showNew = $state(false);
+	// Native <details>: a tap before the page finishes loading keeps it open. Opened again after a failed submit.
+	let newForm: HTMLDetailsElement | undefined = $state();
+	$effect(() => {
+		if (form?.error && newForm) newForm.open = true;
+	});
 	// While payments are waiting, refresh every 10 s.
 	const waiting = $derived(data.intents.data.some((i: { status: string }) => i.status === 'pending'));
 	const live = autoRefresh(10_000, () => waiting);
@@ -40,7 +44,7 @@
 	{/if}
 </div>
 
-<details class="card" open={showNew || !!form?.error} ontoggle={(e) => (showNew = (e.currentTarget as HTMLDetailsElement).open)}>
+<details class="card" bind:this={newForm} {...form?.error ? { open: true } : {}}>
 	<summary><strong>+ New payment</strong> <span class="small muted">(customer pays at the counter)</span></summary>
 	<form method="POST" action="?/create" class="row" style="margin-top:.75rem">
 		<input type="hidden" name="key" value={data.newKey} />

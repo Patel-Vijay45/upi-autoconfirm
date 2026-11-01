@@ -3,11 +3,30 @@ import { api, load as get } from '$lib/server/api.ts';
 import { form, run } from '$lib/server/actions.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const lists = await Promise.all(['review', 'unmatched', 'ambiguous'].map((s) => get(event, `/v1/signals?status=${s}&limit=30`)));
-	const all = lists.flatMap((l) => l.data).slice(0, 40);
-	// Each signal with its suggested orders (closest amount and time at the same counter).
-	const signals = await Promise.all(all.map((s: { id: string }) => get(event, `/v1/signals/${s.id}`)));
-	return { signals };
+	const tab = event.url.searchParams.get('tab') === 'other' ? 'other' : 'check';
+	const open = event.url.searchParams.get('open');
+	// "Needs a look": review, ambiguous, and unmatched payments near an order. "Other payments": likely walk-ins.
+	const [review, unmatched, ambiguous, other] = await Promise.all([
+		get(event, '/v1/signals?status=review&limit=30'),
+		get(event, '/v1/signals?status=unmatched&walk_in=false&limit=30'),
+		get(event, '/v1/signals?status=ambiguous&limit=30'),
+		get(event, '/v1/signals?status=unmatched&walk_in=true&limit=50'),
+	]);
+	const check = [...review.data, ...unmatched.data, ...ambiguous.data].slice(0, 30);
+	// Each "needs a look" signal with its suggested orders (closest amount and time at the same counter).
+	// Other payments load suggestions only for the one being matched (keeps sub-requests low).
+	const detailIds = tab === 'check' ? check.map((s: { id: string }) => s.id) : open ? [open] : [];
+	const details = new Map<string, unknown>(
+		(await Promise.all(detailIds.map((id: string) => get(event, `/v1/signals/${encodeURIComponent(id)}`)))).map((d: { id: string }) => [d.id, d]),
+	);
+	return {
+		tab,
+		open,
+		checkCount: check.length,
+		otherCount: other.data.length,
+		otherMore: other.has_more as boolean,
+		signals: tab === 'check' ? check.map((s: { id: string }) => details.get(s.id) ?? s) : other.data.map((s: { id: string }) => details.get(s.id) ?? s),
+	};
 };
 
 const act = (fn: (event: Parameters<Actions[string]>[0], f: Record<string, string>) => Promise<unknown>, done: string) => async (event: Parameters<Actions[string]>[0]) => {

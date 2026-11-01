@@ -95,14 +95,27 @@ Most shops have **one UPI ID**, so they need **one counter**. Enter the UPI ID o
 | **Battery** | Tap **Fix** → on "App battery usage" tap the **words "Allow background usage"** → choose **Unrestricted**. |
 | **Autostart** | Only on Xiaomi, Oppo, Vivo, Realme: **Open settings** → allow autostart. |
 | **Payment-app rules loaded** | Should show ✓ with a version. If ✗, tap **Retry** (needs internet). |
+| **Warnings on this phone allowed** | Android 13 and newer: tap **Allow**. Then, if notification access ever gets turned off, the phone itself shows "AutoConfirm can't see payments, tap to fix". |
 
 The top of the app should say **Online**. In the dashboard, the phone shows **Online** too.
 
-Keep the phone charged, on internet, and don't swipe AutoConfirm away from recent apps. If it goes offline, the dashboard shows it.
+Keep the phone charged, on internet, and don't swipe AutoConfirm away from recent apps. If it goes offline for about 10 minutes, the dashboard shows a red banner and you get an alert (see D6).
 
 ### D5. Removing a phone (stays in sync both ways)
 - **Dashboard → Counters & phones → Remove:** the server stops accepting that phone at once. If the app is open, it shows "This phone was removed, pair again" within 30 seconds; otherwise as soon as it's opened.
 - **App → Unpair this phone:** the app tells the server, and the Counters & phones page shows the phone as removed within 15 seconds (it refreshes itself). If the phone is offline at that moment, also press **Remove** in the dashboard.
+
+### D6. Get alerts on your own phone (owner and staff)
+So you know at once when a counter phone stops working:
+1. On **your** phone (not the counter phone), open the dashboard → **Counters & phones** → **Turn on alerts on this phone** → **Allow**.
+2. A test alert arrives within a few seconds. Do this on every phone or computer where you want alerts.
+3. **iPhone:** first tap Share → **Add to Home Screen**, open AutoConfirm from the home screen, then turn alerts on there.
+
+You get an alert when:
+- a counter phone goes offline, and again when it's back;
+- a payment needs a look (for example the customer paid ₹930 instead of ₹930.07), or needs your confirmation above the auto-confirm limit.
+
+Walk-in payments don't alert. Alerts are for live data only.
 
 ---
 
@@ -132,22 +145,27 @@ Filter by **Waiting / Paid / Expired / Cancelled**. Open a payment to:
 A waiting payment expires after 15 minutes (you can change this in Settings). Late payments are still matched for 30 minutes after expiry.
 
 ### Inbox (check it a few times a day)
-Money the phone saw that couldn't be matched automatically:
+Two tabs:
+- **Needs a look:** money that seems to belong to an order but wasn't matched automatically. These come with an alert (D6).
+- **Other payments:** money not near any recent order, usually walk-in customers paying your UPI ID directly. Nothing to do. If one does belong to an order, tap **Match to an order…**. You can turn this split off in Settings.
+
+Statuses in **Needs a look**:
 
 | Status | Meaning | What to do |
 |---|---|---|
-| **Unmatched** | No open order with that exact amount (e.g. the customer typed ₹930 instead of ₹930.37), or a walk-in customer | Tap **Match** on the right order (suggestions are shown), or **Ignore** with a reason |
+| **Unmatched** | No open order with that exact amount, but one is close (e.g. the customer typed ₹930 instead of ₹930.37, or paid twice) | Tap **Match** on the right order (suggestions are shown), or **Ignore** with a reason |
 | **Ambiguous** | More than one possible order | Ask the customer, then **Match** the right one |
 | **Needs review** | Amount above your auto-confirm limit | Check the phone/soundbox → **Confirm payment**, or **Not this order** |
 
 Never hand over goods based on a customer's screenshot. Wait for **✓ Paid**, or check the phone/soundbox yourself.
 
 ### Reports
-**Reports** → pick dates → daily totals (Indian time), how many were confirmed automatically, and what's still in the inbox. **Download CSV** for your accountant. "Received" includes the identifying paise; it should match your bank statement.
+**Reports** → pick dates → daily totals (Indian time), how many were confirmed automatically, what's still in the inbox, and walk-in payments (Other payments) counted separately. **Download CSV** for your accountant. "Received" includes the identifying paise; it should match your bank statement.
 
 ### Settings (owner/admin)
 - **Auto-confirm limit (₹)**: payments above it need one staff tap in the inbox. Recommended for expensive items.
 - **Payment request expiry**: default 15 min (restaurants may want 60).
+- **Keep walk-in payments out of the inbox**: on by default. Turn it off if your UPI ID is used only for website orders.
 - **Longest expiry** a website may ask for: up to 180 min.
 - **Team** and **Activity log**: see Part H.
 
@@ -196,6 +214,8 @@ For developers. Full guide: [INTEGRATION.md](INTEGRATION.md); API reference: [AP
 | **Play Protect blocks the install** | D2: "Install anyway", or pause Play Protect while installing. |
 | **"App was denied access" for notifications** | D4: Settings → Apps → AutoConfirm → ⋮ → **Allow restricted settings**, then turn access on for **AutoConfirm** (not Android Auto). |
 | **App says Offline** | Check internet; notification access on; battery **Unrestricted**; open the app once. Restarting the phone also works; the app restarts itself. |
+| **Red banner "… is offline"** | The counter phone hasn't checked in for 10+ minutes. Check its battery, internet and notification access, and open the app once. Payments there need **Mark paid** until it's back. |
+| **No alerts on my phone** | Counters & phones → **Send test alert**. If nothing arrives: allow notifications for the dashboard site in the browser settings, then **Turn off** and **Turn on** again. On iPhone, use the home-screen app (D6). |
 | **"Payment-app rules loaded" ✗** | Tap **Retry**. If it stays ✗, the service was deployed without rules: run the Deploy workflow. |
 | **Payment made but not confirmed** | 1) Did the customer pay the **exact** amount? If not, it's in the **Inbox** → Match. 2) Is the phone Online? 3) Does the app's "Today" list show the payment? If not, the payment app's wording isn't in the rules yet; send a screenshot. 4) Is the payment app's notification turned on and not silenced? |
 | **Shows in Inbox as "Needs review"** | Amount is above your auto-confirm limit; confirm it after checking. |

@@ -22,6 +22,8 @@
     "producers": [{ "binding": "WEBHOOKS", "queue": "autoconfirm-webhooks" }],
     "consumers": [{ "queue": "autoconfirm-webhooks", "max_batch_size": 10, "max_retries": 6 }]
   },
+  // Every 5 min: mark phones that stopped checking in as offline and alert (alerts.ts).
+  "triggers": { "crons": ["*/5 * * * *"] },
   "kv_namespaces": [
     // Parser rules for the Android app. Replace id with `wrangler kv namespace create RULES`.
     { "binding": "RULES", "id": "00000000000000000000000000000000" }
