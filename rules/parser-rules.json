@@ -1,37 +1,123 @@
 {
-  "version": "2026-11-01.1",
+  "version": "2026-11-01.2",
   "_notes": {
     "google_pay": "Verified 2026-11-01 from a real 'paid you' notification on Android: title '<payer> paid you ₹1.00', text = the payer's note.",
     "phonepe": "UNVERIFIED guess. Replace with real wording when a screenshot is available.",
     "paytm": "UNVERIFIED guess. Replace with real wording when a screenshot is available.",
-    "sms": "Bank SMS is deliberately not read yet: with the app alert it would report each payment twice."
+    "sms": "Bank credit SMS, read from the phone's SMS app notifications. The sender (notification title) must be a bank's DLT header such as JD-IDFCFB-S, so an SMS from an ordinary phone number can't fake a payment. Debit SMS are ignored. Verified 2026-11-01: IDFC FIRST credit ('Your A/C … is credited with INR 1.49 …'), IDFC and Axis debits (ignored). The Axis-style credit pattern is derived from the real Axis debit format and still needs a real sample. When both the payment app's alert and the SMS arrive for one payment, the server counts it once."
   },
   "apps": [
     {
       "id": "google_pay",
-      "packages": ["com.google.android.apps.nbu.paisa.user", "com.google.android.apps.nbu.paisa.merchant"],
-      "incoming": [
-        { "field": "title", "regex": "^(.{1,80}?)\\s+paid you\\s+₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s*$", "payer": 1, "amount": 2 }
+      "packages": [
+        "com.google.android.apps.nbu.paisa.user",
+        "com.google.android.apps.nbu.paisa.merchant"
       ],
-      "ignore": ["(?i)^you paid", "(?i)\\bpayment (?:failed|declined)\\b", "(?i)\\bcashback\\b", "(?i)\\brequested\\b"]
+      "incoming": [
+        {
+          "field": "title",
+          "regex": "^(.{1,80}?)\\s+paid you\\s+₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s*$",
+          "payer": 1,
+          "amount": 2
+        }
+      ],
+      "ignore": [
+        "(?i)^you paid",
+        "(?i)\\bpayment (?:failed|declined)\\b",
+        "(?i)\\bcashback\\b",
+        "(?i)\\brequested\\b"
+      ]
     },
     {
       "id": "phonepe",
-      "packages": ["com.phonepe.app", "com.phonepe.app.business"],
-      "incoming": [
-        { "field": "any", "regex": "(?i)received\\s+(?:rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 },
-        { "field": "any", "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 }
+      "packages": [
+        "com.phonepe.app",
+        "com.phonepe.app.business"
       ],
-      "ignore": ["(?i)\\bpaid to\\b", "(?i)\\bsent\\b", "(?i)\\bcashback\\b", "(?i)\\brefund", "(?i)\\brequest", "(?i)\\bfailed\\b"]
+      "incoming": [
+        {
+          "field": "any",
+          "regex": "(?i)received\\s+(?:rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+from\\s+([A-Za-z][A-Za-z .]{0,60})",
+          "amount": 1,
+          "payer": 2
+        },
+        {
+          "field": "any",
+          "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z][A-Za-z .]{0,60})",
+          "amount": 1,
+          "payer": 2
+        }
+      ],
+      "ignore": [
+        "(?i)\\bpaid to\\b",
+        "(?i)\\bsent\\b",
+        "(?i)\\bcashback\\b",
+        "(?i)\\brefund",
+        "(?i)\\brequest",
+        "(?i)\\bfailed\\b"
+      ]
     },
     {
       "id": "paytm",
-      "packages": ["net.one97.paytm", "com.paytm.business"],
-      "incoming": [
-        { "field": "any", "regex": "(?i)received\\s+(?:rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 },
-        { "field": "any", "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z][A-Za-z .]{0,60})", "amount": 1, "payer": 2 }
+      "packages": [
+        "net.one97.paytm",
+        "com.paytm.business"
       ],
-      "ignore": ["(?i)\\bpaid to\\b", "(?i)\\bsent\\b", "(?i)\\bcashback\\b", "(?i)\\brefund", "(?i)\\brequest", "(?i)\\bfailed\\b"]
+      "incoming": [
+        {
+          "field": "any",
+          "regex": "(?i)received\\s+(?:rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+from\\s+([A-Za-z][A-Za-z .]{0,60})",
+          "amount": 1,
+          "payer": 2
+        },
+        {
+          "field": "any",
+          "regex": "₹\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+received from\\s+([A-Za-z][A-Za-z .]{0,60})",
+          "amount": 1,
+          "payer": 2
+        }
+      ],
+      "ignore": [
+        "(?i)\\bpaid to\\b",
+        "(?i)\\bsent\\b",
+        "(?i)\\bcashback\\b",
+        "(?i)\\brefund",
+        "(?i)\\brequest",
+        "(?i)\\bfailed\\b"
+      ]
+    },
+    {
+      "id": "bank_sms",
+      "packages": [
+        "com.google.android.apps.messaging",
+        "com.samsung.android.messaging",
+        "com.android.messaging",
+        "com.android.mms"
+      ],
+      "incoming": [
+        {
+          "field": "any",
+          "regex": "^[A-Z]{2}-(?:IDFCFB|AXISBK|HDFCBK|ICICIB|ICICIT|SBIUPI|SBIINB|SBIPSG|CBSSBI|KOTAKB|YESBNK|PNBSMS|BOBTXN|BOBSMS|CANBNK|UNIONB|INDBNK|IOBCHN|FEDBNK|IDBIBK|RBLBNK|AUBANK|BOIIND|CENTBK|UCOBNK|INDUSB|KVBANK|SIBSMS|DBSBNK|PAYTMB|AIRBNK|JIOPBK|IPBMSG)(?:-[A-Z])?\\n[\\s\\S]*?(?i:a/c)[^\\n]{0,40}?(?i:credited)\\s+(?i:with|by)\\s+(?i:inr|rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)",
+          "amount": 1
+        },
+        {
+          "field": "any",
+          "regex": "^[A-Z]{2}-(?:IDFCFB|AXISBK|HDFCBK|ICICIB|ICICIT|SBIUPI|SBIINB|SBIPSG|CBSSBI|KOTAKB|YESBNK|PNBSMS|BOBTXN|BOBSMS|CANBNK|UNIONB|INDBNK|IOBCHN|FEDBNK|IDBIBK|RBLBNK|AUBANK|BOIIND|CENTBK|UCOBNK|INDUSB|KVBANK|SIBSMS|DBSBNK|PAYTMB|AIRBNK|JIOPBK|IPBMSG)(?:-[A-Z])?\\n[\\s\\S]*?(?i:inr|rs\\.?|₹)\\s?([0-9,]+(?:\\.[0-9]{1,2})?)\\s+(?i:(?:has been |is |was )?credited)\\b(?:[\\s\\S]*?UPI/[A-Z0-9]+/([0-9]{9,22})/([^/\\n]{1,60}))?",
+          "amount": 1,
+          "reference": 2,
+          "payer": 3
+        }
+      ],
+      "ignore": [
+        "(?i)\\b(?:a/c|account)\\b[^\\n.]{0,40}?\\bdebited\\b",
+        "(?i)(?:inr|rs\\.?|₹)\\s?[0-9,]+(?:\\.[0-9]{1,2})?\\s+(?:has been\\s+|is\\s+|was\\s+)?debited",
+        "(?i)\\bwill be debited\\b",
+        "(?i)\\botp\\b",
+        "(?i)\\brequested\\b",
+        "(?i)\\bfailed\\b",
+        "(?i)\\brevers",
+        "(?i)\\brefund"
+      ]
     }
   ]
 }

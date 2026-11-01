@@ -92,7 +92,7 @@ Until the app is on the Play Store, Android shows two warnings (step by step in 
 - **Notification access** is blocked as a "restricted setting": Settings → Apps → AutoConfirm → ⋮ → **Allow restricted settings**, then turn on access for AutoConfirm.
 - Battery: "App battery usage" → tap **Allow background usage** → **Unrestricted**.
 
-Real-phone status (2026-11-01): Google Pay "<payer> paid you ₹X" notifications verified and in `rules/parser-rules.json`. PhonePe/Paytm still need real samples.
+Real-phone status (2026-11-01): Google Pay "<payer> paid you ₹X" alerts and IDFC FIRST credit SMS are verified and in `rules/parser-rules.json`; debit SMS are ignored. PhonePe/Paytm alerts and other banks' credit SMS still need real samples.
 
 ## 8. Distribution
 - **Google Play:** apps using `NotificationListenerService` need a clear in-app disclosure and a privacy policy, and a store listing that explains the core use (see COMPLIANCE.md). Expect review questions.

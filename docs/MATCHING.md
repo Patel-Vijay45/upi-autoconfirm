@@ -76,11 +76,14 @@ ingest(signal):
   3. Dedupe. A signal is a DUPLICATE (no change, duplicate_of = the first signal) when:
      a. Same upload again: fingerprint = sha256(device_id | notification_key_hash | amount | posted_at)
         was seen at this location in the last 48 h. Or
-     b. Same payment seen twice: another signal at this location has the same amount, the same
-        payer_short (or both empty), the same UTR (when both have one), paid_time within ±2 min,
-        is not already the duplicate_of target of a signal from this device,
-        AND it came from a different device, or from the same device with the same notification key.
-        (Same device + different notification key = a second real payment, not a duplicate.)
+     b. Same payment seen twice: another signal at this location has the same amount, the same UTR
+        (when both have one), paid_time within ±2 min, AND one of:
+          - it came from a different phone (backup phone);
+          - same phone and same app, with the same notification key (the notification was updated);
+          - same phone, different channel (e.g. the payment app's alert and the bank's credit SMS).
+        Payer names must match; across channels a missing name on one side is fine (bank SMS often has none).
+        Copies pair one-to-one per (phone, channel), so a customer who really pays twice still shows
+        up in the inbox. (Same phone + same app + different notification key = a second real payment.)
   4. candidates = intents at this location where unique_amount == signal.amount
         AND (status == pending OR (status == expired AND received_at − expires_at ≤ grace_window))
         AND created_at − 2 min ≤ paid_time        -- money sent before the order existed can't pay it

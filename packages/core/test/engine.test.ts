@@ -245,6 +245,42 @@ describe('dedupe', () => {
 		expect(c3.signal.status).toBe('unmatched'); // a third payment only phone B saw
 	});
 
+	it('the payment app alert and the bank SMS for one payment count once (either order)', () => {
+		const e = engine();
+		const a = e.createIntent({ id: 'pi_a', amount: 100 }, T0).intent;
+		const app = e.ingest(sig(a.uniqueAmount, { app: 'google_pay', payerShort: 'Vijaykumar P' }, T0 + MIN), T0 + MIN);
+		const sms = e.ingest(sig(a.uniqueAmount, { app: 'bank_sms', payerShort: null }, T0 + MIN + 2000), T0 + MIN + 3000);
+		expect(app.signal.status).toBe('matched');
+		expect(sms.signal).toMatchObject({ status: 'duplicate', duplicateOf: app.signal.id });
+
+		const b = e.createIntent({ id: 'pi_b', amount: 200 }, T0).intent;
+		const sms2 = e.ingest(sig(b.uniqueAmount, { app: 'bank_sms', payerShort: null }, T0 + 2 * MIN), T0 + 2 * MIN);
+		const app2 = e.ingest(sig(b.uniqueAmount, { app: 'google_pay', payerShort: 'Asha K' }, T0 + 2 * MIN + 1000), T0 + 2 * MIN + 1000);
+		expect(sms2.signal.status).toBe('matched');
+		expect(app2.signal).toMatchObject({ status: 'duplicate', duplicateOf: sms2.signal.id });
+	});
+
+	it('a real double payment still shows up when both channels report it', () => {
+		const e = engine();
+		const a = e.createIntent({ id: 'pi_a', amount: 100 }, T0).intent;
+		const amt = a.uniqueAmount;
+		const app1 = e.ingest(sig(amt, { app: 'google_pay', payerShort: 'Asha K', notificationKeyHash: 'g1' }, T0 + MIN), T0 + MIN);
+		const sms1 = e.ingest(sig(amt, { app: 'bank_sms', payerShort: null, notificationKeyHash: 's1' }, T0 + MIN + 500), T0 + MIN + 500);
+		const app2 = e.ingest(sig(amt, { app: 'google_pay', payerShort: 'Asha K', notificationKeyHash: 'g2' }, T0 + MIN + 20_000), T0 + MIN + 20_000);
+		const sms2 = e.ingest(sig(amt, { app: 'bank_sms', payerShort: null, notificationKeyHash: 's2' }, T0 + MIN + 21_000), T0 + MIN + 21_000);
+		expect(app1.signal.status).toBe('matched');
+		expect(sms1.signal).toMatchObject({ status: 'duplicate', duplicateOf: app1.signal.id });
+		expect(app2.signal.status).toBe('unmatched'); // the second payment: in the inbox as a possible double payment
+		expect(sms2.signal).toMatchObject({ status: 'duplicate', duplicateOf: app2.signal.id });
+	});
+
+	it('different payer names across channels are not duplicates', () => {
+		const e = engine();
+		e.ingest(sig(1000, { app: 'google_pay', payerShort: 'Asha K' }, T0), T0);
+		const r = e.ingest(sig(1000, { app: 'bank_sms', payerShort: 'Ravi S' }, T0 + 1000), T0 + 1000);
+		expect(r.signal.status).toBe('unmatched');
+	});
+
 	it('different UTRs are never duplicates', () => {
 		const e = engine();
 		e.ingest(sig(1000, { deviceId: 'dev_a', reference: 'UTR1' }, T0), T0);

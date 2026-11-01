@@ -586,22 +586,33 @@ export class LocationEngine {
 		return undefined;
 	}
 
+	/**
+	 * Is this signal another report of a payment we already have? Copies come from:
+	 *  - another phone at the same counter (backup phone),
+	 *  - the same notification updated (same phone, same notification key),
+	 *  - another channel on the same phone (the payment app's alert and the bank's SMS for one payment).
+	 * Copies pair one-to-one per (phone, channel), so a customer who really pays twice still shows up.
+	 */
 	private findDuplicateOf(sig: Signal): Signal | undefined {
 		const w = this.settings.dedupeWindowMs;
 		let best: Signal | undefined;
 		for (const o of this.signals.values()) {
 			if (o.id === sig.id || o.status === 'duplicate') continue;
 			if (o.amount !== sig.amount) continue;
-			if (normPayer(o.payerShort) !== normPayer(sig.payerShort)) continue;
 			if (o.reference && sig.reference && o.reference !== sig.reference) continue;
 			if (Math.abs(o.paidTime - sig.paidTime) > w) continue;
 			const otherDevice = o.deviceId !== sig.deviceId;
-			const sameNotification = !otherDevice && o.notificationKeyHash === sig.notificationKeyHash;
-			if (!otherDevice && !sameNotification) continue; // same phone, different notification = a second real payment
-			// Pair one-to-one: each original takes at most one copy from a given device.
+			const otherChannel = o.app !== sig.app;
+			const sameNotification = !otherDevice && !otherChannel && o.notificationKeyHash === sig.notificationKeyHash;
+			if (!otherDevice && !otherChannel && !sameNotification) continue; // same phone + same app + new notification = a second real payment
+			// Payer names must agree. Across channels one side may have no name (bank SMS often doesn't show it).
+			const a = normPayer(o.payerShort);
+			const b = normPayer(sig.payerShort);
+			if (otherChannel ? a !== '' && b !== '' && a !== b : a !== b) continue;
+			// Pair one-to-one: each original takes at most one copy per (phone, channel).
 			let taken = false;
 			for (const d of this.signals.values()) {
-				if (d.duplicateOf === o.id && d.deviceId === sig.deviceId) {
+				if (d.duplicateOf === o.id && d.deviceId === sig.deviceId && d.app === sig.app) {
 					taken = true;
 					break;
 				}

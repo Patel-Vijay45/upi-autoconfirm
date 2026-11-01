@@ -108,7 +108,7 @@ Keep the phone charged, on internet, and don't swipe AutoConfirm away from recen
 
 If instead the payment lands in the **Inbox**, see [Troubleshooting](#i-troubleshooting).
 
-Note: right now the app reads **Google Pay "paid you"** notifications (checked on a real phone). PhonePe and Paytm wording still needs a real screenshot each; until then those payments may not be read. Send screenshots to whoever maintains the rules (see DEVELOPMENT.md → "Support a new payment app").
+Note: right now the app reads **Google Pay "paid you"** alerts and **bank credit SMS** (checked with IDFC FIRST; other big banks are on the list but need a real sample). If a payment isn't picked up, screenshot the "money received" notification or SMS and send it to whoever maintains the rules (see DEVELOPMENT.md → "Support a new payment app").
 
 ---
 

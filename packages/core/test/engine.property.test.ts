@@ -9,7 +9,7 @@ const T0 = 1_800_000_000_000;
 
 type Cmd =
 	| { k: 'create'; base: number; ttl: number }
-	| { k: 'signal'; target: number; delta: number; device: number; payer: number; ago: number; skew: number; keyReuse: boolean }
+	| { k: 'signal'; target: number; delta: number; device: number; payer: number; ago: number; skew: number; keyReuse: boolean; channel: number }
 	| { k: 'advance'; ms: number }
 	| { k: 'cancel'; pick: number }
 	| { k: 'markPaid'; pick: number; withSignal: number | null }
@@ -32,6 +32,7 @@ const cmd: fc.Arbitrary<Cmd> = fc.oneof(
 			ago: fc.constantFrom(0, 0, 5_000, 3 * MIN, 40 * MIN, 3 * 60 * MIN, 30 * 60 * MIN),
 			skew: fc.constantFrom(0, 0, 90_000, -90_000, 10 * MIN),
 			keyReuse: fc.boolean(),
+			channel: fc.nat(1), // payment-app alert or bank SMS
 		}),
 	},
 	{ weight: 4, arbitrary: fc.record({ k: fc.constant('advance' as const), ms: fc.constantFrom(1_000, 30_000, 5 * MIN, 20 * MIN, 61 * MIN, 25 * 60 * MIN) }) },
@@ -152,7 +153,7 @@ function run(cmds: Cmd[], seed: number, settings: Settings) {
 						{
 							id,
 							deviceId: `dev_${c.device}`,
-							app: 'gpay_business',
+							app: ['gpay_business', 'bank_sms'][c.channel]!,
 							amount,
 							payerShort: ['Ramesh P', 'Sita K', null][c.payer]!,
 							notificationKeyHash: key,

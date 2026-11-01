@@ -99,3 +99,12 @@ Format: **Decision** — why — consequences.
 
 27. **Migrations are additive only; never edit an applied one.**
     Older Worker versions keep working with the newer schema, so rollbacks are safe.
+
+## Later changes
+
+28. **Bank credit SMS are read after all (supersedes 22), with cross-channel dedupe.**
+    The second real test (2026-11-01) showed no "paid you" app alert at all: whether an app alerts depends on which app owns the receiving UPI ID, but every bank sends a credit SMS. So:
+    - The SMS sender must be a bank DLT header on an allow-list, so a text from an ordinary number can't fake a payment.
+    - Debit, OTP and collect-request SMS are ignored.
+    - The engine counts the app alert and the SMS for one payment once, pairing copies one-to-one per (phone, channel), so a real double payment still appears in the inbox.
+

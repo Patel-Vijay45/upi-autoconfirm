@@ -334,7 +334,7 @@ Add it to `Settings` + `DEFAULT_SETTINGS` (`packages/core/src/engine.ts`), parse
 2. Add or edit an entry in `rules/parser-rules.json` (Java regex; `field` = `title`/`text`/`big_text`/`any`; `amount`/`payer`/`reference` = group numbers; `ignore` patterns). Bump `version`.
 3. Add the captured text as a test in `apps/android/app/src/test/java/app/autoconfirm/RealRulesTest.kt` and run `./gradlew testDebugUnitTest`.
 4. Merge → deploy publishes the rules → phones fetch within 15 min (or **Retry** in the app).
-Keep bank SMS out unless dedupe across apps is added (each payment would be reported twice).
+Bank SMS: add the bank's DLT sender code to the `bank_sms` header allow-list (never accept ordinary numbers), and add a captured credit SMS **and** debit SMS to `RealRulesTest`. The engine already counts an app alert + SMS for one payment once (MATCHING §3, rule 3b).
 
 ### Change the checkout page or widget
 Edit `apps/checkout/src/*` → `npm run build -w @autoconfirm/checkout` → commit `apps/api/src/generated/checkout-assets.ts` → `npm test` (fails if stale or > 15 KB gzipped) → `npm run test:e2e`.
