@@ -34,7 +34,7 @@ We never hold money, so there are no funds to steal. The main risk is **false "p
 - **Webhook secrets:** like device secrets. Shown once.
 - **Rotation:** all secrets can be rotated without downtime (24 h overlap).
 - **Workers Secrets** for master keys; never in code or `wrangler.toml`.
-- **Backups:** D1 Time Travel plus a nightly encrypted export to R2 (with a separate key).
+- **Backups:** D1 Time Travel. Planned: a nightly encrypted export to R2 (with a separate key).
 
 ## 4. Data protection and privacy
 - **Minimise:**

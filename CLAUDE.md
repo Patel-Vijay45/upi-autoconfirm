@@ -8,13 +8,13 @@ Notes for Claude Code sessions working on this repository.
 - An Android app on the merchant's phone forwards "money received" notifications.
 - The server matches them and fires signed webhooks to the merchant's website.
 
-Read [README.md](README.md), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MATCHING.md](docs/MATCHING.md) before changing anything.
+Read [README.md](README.md), then [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (repo map, flows, how-to recipes) and [docs/MATCHING.md](docs/MATCHING.md) before changing anything. Why things are the way they are: [docs/DECISIONS.md](docs/DECISIONS.md). All docs: [docs/README.md](docs/README.md).
 
 ## Stack
 - **Server:**
   - Cloudflare Workers + Hono, written in TypeScript.
-  - Durable Object `MerchantDO`, one per `merchant:location`. It does matching and live updates.
-  - D1 is the source of truth. Queues deliver webhooks, KV holds parser rules, Cron runs the jobs.
+  - Durable Object `LocationDO`, one per `merchant:location:mode`. It runs the matching engine, the outbox and live WebSockets. `PasswordDO` hashes passwords.
+  - D1 is the source of truth. Queues deliver webhooks, KV holds parser rules. (Cron jobs are planned, not built.)
 - **Android app:** Kotlin, NotificationListenerService, Room, WorkManager, OkHttp, Keystore.
 - **Dashboard:** SvelteKit on Cloudflare.
 - **Contracts:** API in [api/openapi.yaml](api/openapi.yaml), schema in [db/schema.sql](db/schema.sql).

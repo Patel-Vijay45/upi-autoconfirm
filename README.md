@@ -28,7 +28,7 @@ Customer phone ──pays──▶ Merchant's UPI ID (their bank)        money: 
                                ▼
 Merchant website ◀──webhook── AutoConfirm service ── match ──▶ payment_intent = PAID
         ▲                              │
-        └── live status (SSE/WS) ──────┘──▶ customer's checkout page shows ✓
+        └── live status (WebSocket) ───┘──▶ customer's checkout page shows ✓
 ```
 
 ## Why
@@ -48,10 +48,18 @@ npm test
 ```
 To run the API and try it with the device simulator, see "Commands" in [CLAUDE.md](CLAUDE.md).
 
+## Start here
+- **Set it up and use it:** [docs/USER-MANUAL.md](docs/USER-MANUAL.md)
+- **Develop or change it:** [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- **All docs:** [docs/README.md](docs/README.md)
+
 ## Documents
 
 | File | What's inside |
 |---|---|
+| [docs/USER-MANUAL.md](docs/USER-MANUAL.md) | Setup from zero, daily use, troubleshooting (no coding) |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Developer guide: repo map, flows, code walkthrough, how-to recipes |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why it's built this way |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, components, tech stack, data flow, multi-tenancy |
 | [docs/MATCHING.md](docs/MATCHING.md) | The unique-amount algorithm, edge cases, state machine |
 | [docs/API.md](docs/API.md) | REST API, webhooks, live status, JS checkout widget (human-readable) |

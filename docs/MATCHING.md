@@ -7,7 +7,7 @@ The core rule: **only auto-confirm when exactly one open payment has exactly tha
 UPI notifications reliably contain the **amount**. They often **don't** contain the note or reference we sent. So the amount itself is the identifier.
 
 - The merchant asks for `amount = 93000` paise (₹930).
-- MerchantDO picks a **random free paise offset** for that base amount at this location:
+- LocationDO picks a **random free paise offset** for that base amount at this location:
   - `offset ∈ [1, 99]` paise, so the customer pays at most 99 paise extra.
   - `unique_amount = amount + offset`, e.g. `93007`.
   - Random, not lowest, so the same amount isn't handed out again and again. A late or repeated payment for an old order is then unlikely to land on a new order.
@@ -66,7 +66,7 @@ PAID / CANCELLED ──(reuse_cooldown over)──▶ offset released
 Statuses: `pending`, `paid`, `expired`, `cancelled`. There is no "review" intent status; review lives on the signal (§5).
 Flags: `late`, `customer_claimed`, `amount_mismatch` (manual match with a different amount).
 
-## 3. Signal processing (inside MerchantDO, one at a time)
+## 3. Signal processing (inside LocationDO, one at a time)
 
 ```text
 ingest(signal):

@@ -14,88 +14,83 @@
 ## 2. Components
 
 ```
-                ┌────────────────────────── Cloudflare ──────────────────────────┐
- Merchant site ─┤ API Worker (Hono)  ── /v1/*  (secret key)                       │
- (server)       │      │                                                         │
-                │      ├──▶ MerchantDO (Durable Object, one per location)        │
- Customer ──────┤ Checkout Worker ── /p/:id, /v1/public/*  (publishable key)     │
- browser        │      │       ▲   live status (WebSocket/SSE)                   │
-                │      │       │                                                 │
- Merchant ──────┤ Device Worker ── /device/v1/*  (signed by device secret)       │
- Android app    │      │                                                         │
-                │      ▼                                                         │
-                │  D1 (accounts, intents, signals, audit)  ·  Queues (webhooks)  │
-                │  R2 (exports, parser-rule bundles)  ·  KV (parser rules cache) │
-                │  Cron triggers (expiry sweep, device-offline check, cleanup)   │
-                └────────────────────────────────────────────────────────────────┘
- Merchant dashboard (SvelteKit on Workers): payments, unmatched inbox, devices, keys, webhooks
+                ┌──────────────────────────── Cloudflare (free plan) ─────────────────────────────┐
+ Merchant site ─┤ API Worker  apps/api (Hono)                                                     │
+ (server)       │   /v1/*            merchant API (secret key or dashboard session)                │
+ Customer ──────┤   /p/:id           hosted checkout page; /v1/public/* + /v1/checkout.js (pk_)     │
+ browser        │   /device/v1/*     phone API (HMAC-signed by the device secret)                   │
+ Phone app ─────┤   /dashboard/v1/*  logins, invites      /admin/v1/*  operator (ADMIN_TOKEN)        │
+                │        │                                                                         │
+                │        ├──▶ LocationDO  (Durable Object, one per merchant:location:mode)          │
+                │        │      runs the matching engine one request at a time, holds live         │
+                │        │      WebSockets, writes D1 + queue through an outbox, alarm for expiry   │
+                │        ├──▶ PasswordDO  (password hashing; DOs get 30 s CPU on the free plan)     │
+                │        ▼                                                                         │
+                │  D1 (system of record) · Queue (webhooks, consumer in the same Worker) · KV (rules) │
+                │                                                                                  │
+ Merchant ──────┤ Dashboard Worker  apps/dashboard (SvelteKit) ──service binding──▶ API Worker      │
+ staff browser  └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1 API Worker (merchant server → us)
-- Create, read, cancel and manual-mark payment intents.
-- Manage webhook endpoints, list signals, assign unmatched signals.
-- Auth: **secret API key** (`sk_live_…`), server-to-server only.
+All HTTP traffic is handled by **one API Worker**; the "checkout", "device" and "dashboard" parts below are route groups inside it, not separate Workers. The dashboard is a second Worker that only calls the API.
 
-### 2.2 Checkout Worker (customer browser → us)
-- Hosted checkout page `/p/:intentId`: QR, app buttons, "I have paid", live status.
-- Public status endpoint and a live stream for the merchant's own checkout UI.
-- Auth: the **publishable key** (`pk_live_…`) or the unguessable intent id (status only, no personal data).
+### 2.1 Merchant API (`/v1/*`, merchant server → us)
+- Payment intents (create, list, get, cancel, mark/unmark paid), the signals inbox, locations, pairing codes, webhook endpoints, plus the dashboard's endpoints (keys, devices, reports, settings, team, audit log).
+- Auth: a **secret API key** (`sk_live_…`/`sk_test_…`) or a **dashboard session** (`ses_…` + `AutoConfirm-Mode`). Roles: `key`, `owner`, `admin`, `staff`, `developer` (API.md §10).
 
-### 2.3 Device Worker (merchant phone → us)
-- Enroll a device with a pairing code, receive signals (payment notifications), heartbeats, and serve parser rules.
-- Auth: **per-device secret**, with every request signed by HMAC-SHA256, a timestamp and a nonce.
+### 2.2 Checkout (customer browser → us)
+- Hosted page `/p/:intentId`: amount, app buttons, QR, "I have paid", countdown, live status (WebSocket + polling fallback). Works before JavaScript loads. Strict CSP.
+- `checkout.js` widget and `/v1/public/*` (publishable key, CORS) for merchants' own pages.
+- The page and widget share one template (`apps/checkout`). Public responses never contain customer data.
 
-### 2.4 MerchantDO: the matching engine (Durable Object, one per location)
-- The object key is `merchant_id:location_id:mode` (`live` or `test`, see §5), so test traffic can never touch live intents.
-- It writes to D1 through an **outbox** saved in the same storage transaction as its state. If D1 or the queue is briefly down, nothing is lost: an alarm retries every 5 s.
-- Holds the location's **active intents**, the **reserved amounts** (open intents plus those in their reuse cool-down) and the recent signal fingerprints, in its own SQLite storage.
-- **All matching for a location happens here, one at a time.** Durable Objects process one request at a time per object, so two signals can't grab the same intent and the same unique amount is never handed out twice.
-- Pushes live updates over WebSocket (hibernation API) to the merchant dashboard and checkout pages.
-- Writes results to D1, which is the system of record, and enqueues webhooks.
+### 2.3 Device API (phone → us)
+- Enroll with a one-time pairing code, then signed signals, heartbeats (clock offset, listener status) and parser rules (from KV).
+- Auth: **per-device secret**; every request is HMAC-signed with a timestamp (±5 min) and a nonce (replays rejected for 10 min).
 
-Why a Durable Object instead of only D1:
-- **Single-threaded per location.** Allocation and matching are race-free without database locks.
-- **In-memory hot set.** Matching is about 1 ms, with no extra database round trip.
-- **Horizontal scale for free.** Each location is independent, so millions of locations means millions of tiny objects.
+### 2.4 LocationDO: the matching engine
+- One object per `merchant_id:location_id:mode` (`live`/`test`), so test traffic can never touch live intents.
+- It runs `packages/core`'s `LocationEngine` and keeps its state (open intents, reserved amounts, recent signals, nonces, idempotency keys) in its own durable storage.
+- **One request at a time:** two signals can't grab the same intent, and one unique amount is never handed out twice, with no database locks.
+- **Outbox:** state changes and "write this to D1 / send this event" are saved in one storage transaction, then flushed. If D1 or the queue fails, an alarm retries every 5 s; nothing is lost.
+- **Live status:** checkout pages connect a WebSocket (hibernation API), and every intent change is pushed.
+- **Alarm:** expiry at `expires_at`, the `expired` event after the grace window, pruning, retries.
 
 ### 2.5 D1 (system of record)
-Merchants, users, keys, devices, payment intents, signals, matches, webhook deliveries and the audit log. See [`db/schema.sql`](../db/schema.sql).
-- Start with a single database that has a `merchant_id` column on every row.
-- Shard by merchant group when the database nears its size limits (see PERFORMANCE.md).
+Merchants, users, sessions, keys, locations, devices, payment intents, signals, events, webhook endpoints and deliveries, audit log, idempotency. See [`db/schema.sql`](../db/schema.sql) and `db/migrations/`. Every row is scoped by `merchant_id`.
 
-### 2.6 Queues: webhook delivery
-- Each event is retried with exponential backoff (10 s, 1 m, 5 m, 30 m, 2 h, 12 h), then marked failed and shown in the dashboard.
-- Every delivery is **signed** (Stripe-style `t=…,v1=…` HMAC) and carries an **event id** so the merchant can ignore duplicates.
+### 2.6 Queue: webhook delivery
+- The DO enqueues `{eventId}`; the consumer (same Worker) fans out per endpoint, signs (`AutoConfirm-Signature: t=,v1=`), POSTs, records the delivery, and retries at 10 s, 1 m, 5 m, 30 m, 2 h, 12 h, then marks it failed.
+- The event id is stable, so merchants can ignore duplicates.
 
-### 2.7 Android companion app
-- **Kotlin, native.** It uses `NotificationListenerService` to read payment-app notifications.
-- **Parses on the device** using rules downloaded from the server, and **sends only what's needed:** amount, app, time, notification key, and optionally the payer name and UPI reference.
-- **Offline queue** (Room DB) with retry, a heartbeat every 5 min, and battery-optimisation guidance.
-- See [ANDROID-APP.md](ANDROID-APP.md).
+### 2.7 Android app (`apps/android`)
+- Kotlin. `NotificationListenerService` reads only packages in the parser rules; parses on the phone; sends only parsed fields, signed.
+- Offline queue (Room), heartbeat every 5 min, WorkManager sync every 15 min. See [ANDROID-APP.md](ANDROID-APP.md).
 
-### 2.8 Merchant dashboard
-SvelteKit on Workers with:
-- Payments list and unmatched inbox (one-tap "assign to order")
-- Device status (online, last signal, battery hint)
-- API keys, webhook endpoints with a delivery log, parser test tool
-- Team logins
+### 2.8 Merchant dashboard (`apps/dashboard`)
+- SvelteKit 2 / Svelte 5 on Workers. Covers payments (including "New payment" with a QR), the inbox, counters and phones (pairing QR), developers (keys, webhooks, deliveries, events), reports + CSV, settings, team, activity log and an operator page.
+- No database access: every request goes to the API through a **service binding**, so all rules live in the API.
+
+### 2.9 Not built yet (planned)
+- Cron jobs: device-offline alerts, data retention, clean-up of old idempotency rows.
+- R2 exports/backups (D1 Time Travel covers point-in-time recovery for now).
+- Rate limits per merchant/device (login and operator throttling exist).
 
 ## 3. Tech stack
 
 | Layer | Choice | Reason |
 |---|---|---|
-| Runtime | Cloudflare Workers (TypeScript) | Edge PoPs in India, scale to zero, no servers |
-| HTTP framework | Hono | Tiny, fast, Workers-native, typed routes |
+| Runtime | Cloudflare Workers (TypeScript), free plan | Edge locations in India, scale to zero, no servers |
+| HTTP framework | Hono | Tiny, fast, Workers-native |
 | Matching/state | Durable Objects (SQLite-backed, WebSocket hibernation) | Per-location serial execution, live push |
-| Database | Cloudflare D1 | SQLite, cheap, point-in-time recovery (Time Travel) |
-| Async | Cloudflare Queues + Cron Triggers | Webhook retries, expiry sweeps |
-| Cache/config | Workers KV | Parser rules, feature flags |
-| Files | R2 | CSV exports, rule bundles |
-| Validation | Zod (shared schemas → OpenAPI) | One source of truth |
-| Dashboard | SvelteKit + Tailwind | Small bundles, runs on Workers |
-| Android | Kotlin, Jetpack (WorkManager, Room, DataStore), OkHttp | Reliability in the background |
-| Tests | Vitest + Miniflare, Playwright, k6/autocannon, JUnit + Robolectric (Android) | |
-| CI/CD | GitHub Actions → `wrangler deploy` | Simple, built into GitHub |
+| Database | Cloudflare D1 | SQLite, cheap, Time Travel recovery |
+| Async | Cloudflare Queues | Webhook delivery and retries |
+| Config | Workers KV | Parser rules (published from `rules/parser-rules.json` on deploy) |
+| Validation | Zod | Strict request schemas |
+| Checkout UI | Plain TypeScript + esbuild, one shared template | ~5 KB `checkout.js`, no framework |
+| Dashboard | SvelteKit 2 + Svelte 5 (`@sveltejs/adapter-cloudflare`) | Small bundles, runs on Workers |
+| Android | Kotlin, Jetpack Compose, WorkManager, Room, OkHttp, Keystore | Reliability in the background |
+| Tests | Vitest + fast-check, `@cloudflare/vitest-plugin` (workerd), Playwright, JUnit | |
+| CI/CD | GitHub Actions → `tools/deploy/deploy.mjs` (wrangler) | Push → staging; manual → production |
 
 > **Alternative stack:** if Cloudflare isn't wanted, use Node.js (Fastify) + Postgres (row lock or advisory lock per location for matching) + Redis (pub/sub for live status) + BullMQ (webhooks) on any VPS. The design below doesn't depend on Cloudflare; only the "one actor per location" idea matters.
 
@@ -104,7 +99,7 @@ SvelteKit on Workers with:
 ### 4.1 Create payment
 ```
 Merchant server → POST /v1/payment_intents {amount: 93000, order_id: "ORD-1042"}
-  API Worker → MerchantDO.allocate(93000)
+  API Worker → LocationDO.createIntent(93000)
      → picks unique_amount 93007 (random free paise offset for this base amount; reserved amounts excluded)
      → stores intent (pending, expires_at = now + 15 min)
   ← {id: "pi_…", unique_amount: 93007, upi: {uri, apps:{gpay,phonepe,paytm}, qr_svg}, checkout_url}
@@ -118,8 +113,8 @@ The customer taps "Pay with Google Pay", which opens `gpay://upi/pay?...&am=930.
 Phone gets notification "₹930.07 received from Ramesh P" (PhonePe Business)
 AutoConfirm app: parse → {amount: 93007, app: "phonepe_business", payer: "Ramesh P", posted_at, key}
   → POST /device/v1/signals (HMAC signed)
-Device Worker: verify signature/timestamp/nonce → MerchantDO.ingest(signal)
-MerchantDO:
+Device Worker: verify signature/timestamp/nonce → LocationDO.ingest(signal)
+LocationDO:
   dedupe (fingerprint + cross-device window) → find open intents with unique_amount = 93007
      created before the payment was sent (paid_time, corrected for phone clock)
   exactly one → mark PAID, record match, keep the amount reserved for reuse_cooldown
@@ -136,7 +131,7 @@ MerchantDO:
 
 ## 5. Multi-tenancy
 - Every row has a `merchant_id`. Every query is scoped by it, enforced in a single data-access layer and covered by tests.
-- MerchantDO id = `idFromName(merchant_id + ":" + location_id + ":" + mode)`.
+- LocationDO id = `idFromName(merchant_id + ":" + location_id + ":" + mode)`.
 - Keys, devices and webhooks belong to exactly one merchant.
 - **Sub-accounts / locations:** a merchant can have many **locations** (e.g. counters A–D, or branches), each with its own UPI ID and device(s). Matching is per **location**: the DO key is `merchant_id:location_id`, because each location's phone only sees its own UPI ID's payments.
 

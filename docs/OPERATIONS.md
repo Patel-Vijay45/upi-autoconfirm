@@ -21,7 +21,7 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 - Keep 30 days; audit_log keeps 1 year.
 
 ## 3. Backups
-- **D1:** Time Travel (30 days on the paid plan, 7 on free), plus a nightly `wrangler d1 export` to R2 from a Cron trigger. Keep 30 days.
+- **D1:** Time Travel (30 days on the paid plan, 7 on free). Planned: a nightly `wrangler d1 export` to R2 from a Cron trigger.
 - **Durable Objects:** hold only short-lived state (open intents for 15 min). D1 is the source of truth, so a lost DO rebuilds from D1 on start.
 - **Restore drill:** once a quarter, restore yesterday's export into a staging DB and run the test suite against it.
 
@@ -42,10 +42,10 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 
 ### R3. A UPI app changed its notification text
 1. Parse-failure alerts spike for one package (e.g. `com.phonepe.app.business`).
-2. Grab 3–5 redacted samples from `parse_failures`.
-3. Write a new rule version in `parser_rules` (KV), test it with the samples in the rule tester (`npm run rules:test`), and roll it out to 10 % of devices, then 100 %.
-4. Devices fetch rules every 15 min, on start, or on push. No app-store release is needed.
-5. Re-process the failed samples from the last 24 h.
+2. Get a screenshot of the new notification wording from the shop (the app only counts parse failures for now; sample upload is planned).
+3. Edit `rules/parser-rules.json` (bump `version`) and add the sample to `apps/android/.../RealRulesTest.kt`; run `./gradlew testDebugUnitTest`.
+4. Merge and deploy: the deploy publishes the rules to KV. Phones fetch them within 15 min, on start, or when **Retry** is tapped. No app release is needed.
+5. Payments missed meanwhile are in the shop's phone/bank; staff mark them paid from the dashboard.
 
 ### R4. Webhooks failing for a merchant
 - Retries: 10 s, 1 m, 5 m, 30 m, 2 h, 12 h, then `failed` (same as API.md §6). Email the developer after 3 failures.
@@ -86,7 +86,7 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 - WhatsApp support number for merchants; reply targets: 15 min in peak seasons, otherwise same day.
 - **Canned answers:** phone offline, amount mismatch, refund (AutoConfirm can't refund; the merchant refunds from their UPI app), and "is my money safe" (money goes straight to their bank, and AutoConfirm never touches it).
 
-## 8. Data retention jobs (Cron, daily 03:30 IST)
+## 8. Data retention jobs (planned: Cron, daily 03:30 IST; not built yet)
 - `signals.raw_text_hash` and parsed fields: 180 days, then delete.
 - Payer name: mask after 30 days (`R***h`).
 - `idempotency` rows: 24 h. `pairing_codes`: 10 min. `webhook_deliveries`: 30 days.

@@ -3,9 +3,9 @@
 Five steps, about 1–2 hours for a developer.
 
 ## 0. One-time merchant setup (no code)
-1. Sign up in the dashboard, then add a **Location** with the business UPI ID and payee name.
+1. Get a shop account: the operator creates it on the dashboard's `/operator` page and sends the owner a setup link (USER-MANUAL B–C). Then add a **counter** (Counters & phones) with the business UPI ID and payee name.
 2. **Add phone:** install the AutoConfirm app on the counter phone, scan the pairing QR, and complete the checklist.
-3. Do a **₹1 test payment** from another phone. The dashboard shows "₹1.00 received ✓".
+3. Do a **₹1 test payment**: Payments → **+ New payment** → 1 → pay the exact amount from another phone. The page turns **✓ Paid**.
 4. **Developers → API keys:** copy `sk_test_…` (server) and `pk_test_…` (browser).
 5. **Developers → Webhooks:** add `https://yoursite.com/webhooks/autoconfirm` and copy the signing secret.
 

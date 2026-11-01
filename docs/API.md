@@ -203,7 +203,7 @@ expected = hex(HMAC_SHA256(webhook_secret, signed_payload))
 | `POST /device/v1/signals` | Batch of parsed notifications (signed) |
 | `POST /device/v1/heartbeat` | Every 5 min: listener status, app versions, queue size, battery-optimisation state, phone clock (`device_time`). The server stores `clock_offset` from it. |
 | `GET /device/v1/parser_rules?version=` | Current parser rules (ETag-cached) |
-| `POST /device/v1/parse_failures` | Notification text that matched a payment app but couldn't be parsed. Redacted; only if the merchant opted in. |
+| `POST /device/v1/parse_failures` | *(Planned, not built.)* Redacted notification text that matched a payment app but couldn't be parsed; opt-in. |
 
 Signals body (max 50 per request, max 16 KB):
 ```json
