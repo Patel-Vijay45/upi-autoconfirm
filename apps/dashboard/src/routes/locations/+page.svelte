@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { ago, can, STATUS_LABEL } from '$lib/format.ts';
+	import { autoRefresh } from '$lib/auto-refresh.svelte.ts';
 	let { data, form } = $props();
+	// Phones pairing, going offline or unpairing themselves show up without a refresh.
+	const live = autoRefresh(15_000);
 	const manage = $derived(can.manage(data.me.user.role));
 	const phones = (loc: string) => data.devices.filter((d: { location_id: string }) => d.location_id === loc);
 	const confirm = (msg: string) => (e: SubmitEvent) => {
@@ -11,7 +14,10 @@
 <svelte:head><title>Counters & phones · AutoConfirm</title></svelte:head>
 
 <h1>Counters & phones</h1>
-<p class="muted small">Each counter has its own UPI ID and one or more phones running the AutoConfirm app.</p>
+<p class="muted small">
+	Each counter is one UPI ID, with one or more phones running the AutoConfirm app.
+	{#if live.paused}Auto-update paused. <button class="ghost small" onclick={() => live.resume()}>Refresh</button>{/if}
+</p>
 {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
 {#if form?.done}<p class="notice" role="status">{form.done}</p>{/if}
 

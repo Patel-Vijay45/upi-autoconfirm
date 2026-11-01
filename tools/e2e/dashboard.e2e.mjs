@@ -64,6 +64,14 @@ async function signal(device, amountPaise) {
 	return (await res.json()).results[0];
 }
 
+async function unpair(device) {
+	const ts = String(Math.floor(Date.now() / 1000));
+	const nonce = 'n_' + randomBytes(12).toString('hex');
+	const sig = createHmac('sha256', device.device_secret).update(['POST', '/device/v1/unpair', ts, nonce, sha256('{}')].join('\n')).digest('hex');
+	const res = await fetch(`${API}/device/v1/unpair`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-device-id': device.device_id, 'x-timestamp': ts, 'x-nonce': nonce, 'x-signature': sig }, body: '{}' });
+	return res.status;
+}
+
 async function main() {
 	const n = Date.now().toString(36);
 	const ownerEmail = `owner-${n}@shop.example`;
@@ -191,6 +199,18 @@ async function main() {
 	ok(check.status === 200, 'developers: the new key works');
 	await p.goto(`${DASH}/developers`);
 	ok((await p.getByTestId('new-key').count()) === 0 && !(await p.content()).includes(key), 'developers: key not shown again');
+
+	// ----- locations: a phone that unpairs itself shows "Removed" without a reload -----
+	await p.goto(`${DASH}/locations`);
+	await p.click('a:has-text("Add phone")');
+	await p.click('button:has-text("Create pairing code")');
+	const link2 = (await p.getByTestId('pairing-link').textContent()).trim();
+	const code2 = new URL(link2.replace('autoconfirm://', 'https://x/')).searchParams.get('code');
+	const spare = await api('POST', '/device/v1/enroll', { body: { pairing_code: code2, device_info: { label: 'Spare phone' } } });
+	await p.goto(`${DASH}/locations`);
+	ok((await unpair(spare)) === 200, 'phone: unpairs itself');
+	await p.locator('[data-testid=phone]', { hasText: 'Spare phone' }).getByText('Removed').waitFor({ timeout: 25000 });
+	ok(true, 'locations: unpaired phone shows Removed by itself');
 
 	// ----- settings: limit + invite staff -----
 	await p.goto(`${DASH}/settings`);

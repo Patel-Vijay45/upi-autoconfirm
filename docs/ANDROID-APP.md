@@ -18,7 +18,7 @@ The app's only job is to **notice "money received" notifications from the mercha
 | Background work | WorkManager (retry queue, 15-min periodic sync), plus an immediate send from the listener callback |
 | Secure storage | `device_secret` encrypted with Android Keystore (AES-GCM key, non-exportable) |
 | Config | Parser rules JSON pulled from `/device/v1/parser_rules` (ETag) on start and every 15 min |
-| Crash/health | Heartbeat to our API every 5 min while the listener is connected, plus every 15 min from WorkManager (no third-party SDKs, to keep data private). A killed app stops heartbeating, so the server sees it as offline. |
+| Crash/health | Heartbeat to our API every 5 min while the listener is connected, every 30 s while the app is on screen (so "removed in the dashboard" shows at once), plus every 15 min from WorkManager (no third-party SDKs, to keep data private). A killed app stops heartbeating, so the server sees it as offline. |
 
 ## 3. Screens
 1. **Pair:** scan the QR shown in the merchant dashboard (Locations → Add phone) with the phone's camera app. The QR holds an `autoconfirm://pair?api=…&code=pc_…` link with a one-time code valid for 10 min, and it opens the app. No camera permission or scanning library is needed. The link can also be pasted.

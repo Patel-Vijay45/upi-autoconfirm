@@ -101,8 +101,8 @@ The top of the app should say **Online**. In the dashboard, the phone shows **On
 Keep the phone charged, on internet, and don't swipe AutoConfirm away from recent apps. If it goes offline, the dashboard shows it.
 
 ### D5. Removing a phone (stays in sync both ways)
-- **Dashboard → Counters & phones → Remove:** the server stops accepting that phone at once. Within a few minutes the app shows "This phone was removed, pair again".
-- **App → Unpair this phone:** the app tells the server, and the dashboard shows the phone as removed. If the phone is offline at that moment, also press **Remove** in the dashboard.
+- **Dashboard → Counters & phones → Remove:** the server stops accepting that phone at once. If the app is open, it shows "This phone was removed, pair again" within 30 seconds; otherwise as soon as it's opened.
+- **App → Unpair this phone:** the app tells the server, and the Counters & phones page shows the phone as removed within 15 seconds (it refreshes itself). If the phone is offline at that moment, also press **Remove** in the dashboard.
 
 ---
 
