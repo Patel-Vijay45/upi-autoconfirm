@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.result.contract.ActivityResultContracts
 import app.autoconfirm.work.Health
 import androidx.compose.foundation.layout.Arrangement
@@ -112,11 +113,17 @@ private fun Root(incomingLink: String?) {
         }
     }
     @Suppress("UNUSED_EXPRESSION") tick
-    if (app.store.isPaired) StatusScreen(tick) { tick++ } else PairScreen(incomingLink, app.store.revoked) { tick++ }
+    // Demo: look around without a shop (for Google Play reviewers and curious owners). Nothing is read or sent.
+    var demo by rememberSaveable { mutableStateOf(false) }
+    when {
+        app.store.isPaired -> StatusScreen(tick) { tick++ }
+        demo && incomingLink == null -> DemoScreen(tick) { demo = false }
+        else -> PairScreen(incomingLink, app.store.revoked, onDemo = { demo = true }) { tick++ }
+    }
 }
 
 @Composable
-private fun PairScreen(incomingLink: String?, wasRevoked: Boolean, onPaired: () -> Unit) {
+private fun PairScreen(incomingLink: String?, wasRevoked: Boolean, onDemo: () -> Unit, onPaired: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var link by remember(incomingLink) { mutableStateOf(incomingLink ?: "") }
@@ -166,9 +173,95 @@ private fun PairScreen(incomingLink: String?, wasRevoked: Boolean, onPaired: () 
                     }
                 },
             ) { Text(if (busy) "Pairing…" else "Pair this phone") }
+            TextButton(onClick = onDemo, modifier = Modifier.fillMaxWidth()) { Text("No shop yet? See how it works (demo)") }
+            PrivacyLink()
         }
     }
 }
+
+/** Demo mode: the real checklist and permission flow, with sample payments. Not paired, so nothing is read or sent. */
+@Composable
+private fun DemoScreen(tick: Int, onExit: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var showDisclosure by remember { mutableStateOf(false) }
+    @Suppress("UNUSED_EXPRESSION") tick
+    val listenerOn = Sync.listenerEnabled(context)
+    val now = remember { System.currentTimeMillis() }
+    val samples = remember {
+        listOf(
+            RecentPayment(id = -1, app = "google_pay", amountPaise = 93007, payerShort = "Ramesh P", postedAt = now - 4 * 60_000, keyHash = "demo1", status = "matched"),
+            RecentPayment(id = -2, app = "bank_sms", amountPaise = 45023, payerShort = null, postedAt = now - 19 * 60_000, keyHash = "demo2", status = "matched"),
+            RecentPayment(id = -3, app = "google_pay", amountPaise = 6000, payerShort = "Sita K", postedAt = now - 41 * 60_000, keyHash = "demo3", status = "unmatched"),
+        )
+    }
+    Scaffold { pad ->
+        LazyColumn(Modifier.padding(pad).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Spacer(Modifier.size(8.dp))
+                Text("Demo", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "This is what the counter phone shows. In demo mode the phone isn't connected to a shop, so no notifications are read and nothing is sent. The payments below are examples.",
+                )
+            }
+            item { Text("Setup checklist", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
+            item { CheckItem("Notification access is ON", listenerOn, "Turn on") { showDisclosure = true } }
+            item { CheckItem("Paired with your shop", false, null) {} }
+            item { Text("Today (examples)", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
+            items(samples, key = { it.id }) { PaymentRow(it) }
+            item {
+                Spacer(Modifier.size(12.dp))
+                OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) { Text("Exit demo") }
+                PrivacyLink()
+                Spacer(Modifier.size(24.dp))
+            }
+        }
+    }
+    if (showDisclosure) NotificationAccessDisclosure { showDisclosure = false }
+}
+
+/** Opens the privacy policy (Google Play requires a link inside the app). Hidden if the build has no URL. */
+@Composable
+private fun PrivacyLink() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (BuildConfig.PRIVACY_URL.isBlank()) return
+    TextButton(
+        onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PRIVACY_URL))) } },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Privacy policy") }
+}
+
+/**
+ * Prominent disclosure before asking for notification access (Google Play User Data policy): what is read,
+ * what is sent and why, and an explicit "Agree" before the system settings screen opens.
+ */
+@Composable
+private fun NotificationAccessDisclosure(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Allow notification access") },
+        text = {
+            Text(
+                DISCLOSURE_TEXT,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }) { Text("Agree and continue") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    )
+}
+
+/** Kept word for word in docs/PLAY-STORE.md (Google may ask for it). */
+const val DISCLOSURE_TEXT =
+    "AutoConfirm reads notifications on this phone to see when your shop receives money:\n" +
+        "• alerts from the payment apps you use (like Google Pay, PhonePe Business, Paytm for Business), and\n" +
+        "• bank \"credited\" SMS alerts shown by your messaging app, only from bank sender IDs.\n\n" +
+        "From these it takes only the amount, time, a short payer name (\"Ramesh P\") and the payment reference, and sends them to your shop's AutoConfirm server to mark orders as paid.\n\n" +
+        "Notifications from other apps, other SMS and the full notification text are never stored or sent. Nothing is read until this phone is paired with your shop. Your data is not sold or used for ads."
 
 @Composable
 private fun StatusScreen(tick: Int, refresh: () -> Unit) {
@@ -267,32 +360,13 @@ private fun StatusScreen(tick: Int, refresh: () -> Unit) {
             item {
                 Spacer(Modifier.size(12.dp))
                 OutlinedButton(onClick = { confirmUnpair = true }, modifier = Modifier.fillMaxWidth()) { Text("Unpair this phone") }
+                PrivacyLink()
                 Spacer(Modifier.size(24.dp))
             }
         }
     }
 
-    if (showDisclosure) {
-        // Prominent disclosure before asking for notification access (Google Play policy).
-        AlertDialog(
-            onDismissRequest = { showDisclosure = false },
-            title = { Text("Allow notification access") },
-            text = {
-                Text(
-                    "AutoConfirm reads notifications only from the payment apps you use (like PhonePe Business, Paytm for Business or Google Pay for Business) to see when money is received.\n\n" +
-                        "It sends only the amount, time, a short payer name (\"Ramesh P\") and the payment reference to your shop's AutoConfirm server.\n\n" +
-                        "Notifications from all other apps are ignored and never stored or sent. The full notification text never leaves this phone.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDisclosure = false
-                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                }) { Text("Continue") }
-            },
-            dismissButton = { TextButton(onClick = { showDisclosure = false }) { Text("Not now") } },
-        )
-    }
+    if (showDisclosure) NotificationAccessDisclosure { showDisclosure = false }
     if (confirmUnpair) {
         AlertDialog(
             onDismissRequest = { confirmUnpair = false },

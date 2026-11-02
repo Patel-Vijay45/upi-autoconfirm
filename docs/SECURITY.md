@@ -43,11 +43,10 @@ We never hold money, so there are no funds to steal. The main risk is **false "p
   - The payer name is truncated to "Firstname L" on the device.
   - Customer phone is optional, and masked in logs and UI except to the merchant.
   - Raw notification text isn't stored (except redacted parse failures, opt-in, 7 days).
-- **Retention defaults:**
-  - Signals: 90 days.
-  - Payment intents: 1 year. Merchants may need records for tax; let them export and set their own retention.
-  - Audit log: 1 year.
-  - Parse failures: 7 days.
+- **Retention (enforced daily, `retention.ts`; see OPERATIONS §8):**
+  - Signals: payer name and UTR blanked after 90 days.
+  - Payment intents: customer name/phone blanked after 1 year; the record stays (merchants need it for tax).
+  - Audit log: 1 year (IP 90 days). Events and webhook logs: 30 days. Parse failures: 7 days.
 - **Encryption:** TLS 1.2+ everywhere. Cloudflare encrypts D1 at rest. Secrets have an extra AES-GCM layer.
 - **Access:** our staff access production data only through audited admin tools, never raw database access by default.
 - **Data subject requests:** delete or export by customer phone across a merchant's data.

@@ -37,6 +37,7 @@ We process personal data: customer names, phones, payer names and amounts.
 - **Don't request SMS or Call Log permissions.** These are restricted on Play and usually rejected for this use case. Bank SMS can still be read as notifications.
 - **Don't use AccessibilityService** for this. It's heavily restricted.
 - Expect manual review. Keep a short demo video ready that shows the core function.
+- Step-by-step publishing, with every Play Console answer: [PLAY-STORE.md](PLAY-STORE.md).
 - If rejected, distribute the APK directly from our site. Merchants install it once; still keep the disclosure and privacy policy.
 
 ## 5. Payment apps' terms
@@ -63,6 +64,7 @@ We process personal data: customer names, phones, payer names and amounts.
 - [ ] Written legal opinion on PA/PG status and marketing language
 - [ ] Privacy policy, terms of service, DPA, grievance officer published
 - [ ] Data retention jobs running; deletion/export tools tested
-- [ ] Play Store disclosure + Data safety form, or a signed direct-APK channel
+- [x] Play Store disclosure, privacy page, Data safety answers (PLAY-STORE.md); signed APK also produced for direct installs
+- [x] Data retention job running (`retention.ts`)
 - [ ] Security review / pen test done (SECURITY.md checklist complete)
 - [ ] Incident and breach-notification process written and owners assigned

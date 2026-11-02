@@ -13,16 +13,34 @@ android {
         applicationId = "app.autoconfirm"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.4"
+        // CI passes -Pautoconfirm.versionCode (must grow with every Play upload).
+        versionCode = (project.findProperty("autoconfirm.versionCode") as String?)?.toInt() ?: 6
+        versionName = "0.2.0"
+        // Privacy policy link shown in the app (Google Play requires one in the app and in the listing).
+        buildConfigField("String", "PRIVACY_URL", "\"${project.findProperty("autoconfirm.privacyUrl") ?: ""}\"")
         // Optional certificate pinning for the API host: "host" and comma-separated "sha256/..." pins
         // (primary + backup). Empty = no pinning. Set these in your release build.
         buildConfigField("String", "PIN_HOST", "\"${project.findProperty("autoconfirm.pinHost") ?: ""}\"")
         buildConfigField("String", "PIN_SHA256", "\"${project.findProperty("autoconfirm.pins") ?: ""}\"")
     }
 
+    // Upload key for Google Play (Play re-signs with its own app-signing key). Paths and passwords come from
+    // environment variables (CI secrets), never from the repository. Without them, release builds are unsigned.
+    val uploadKeystore = System.getenv("AC_UPLOAD_KEYSTORE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("AC_UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("AC_UPLOAD_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "upload"
+                keyPassword = System.getenv("AC_UPLOAD_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: System.getenv("AC_UPLOAD_STORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("upload")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

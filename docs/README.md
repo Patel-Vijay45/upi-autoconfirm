@@ -16,7 +16,8 @@ Start here. Pick the row that matches what you want to do.
 | Security, threats, privacy | [SECURITY.md](SECURITY.md) |
 | Run it day to day (alerts, incidents, backups) | [OPERATIONS.md](OPERATIONS.md) |
 | Limits, speed, costs | [PERFORMANCE.md](PERFORMANCE.md) |
-| Legal / RBI / Play Store questions | [COMPLIANCE.md](COMPLIANCE.md) |
+| Legal / RBI questions | [COMPLIANCE.md](COMPLIANCE.md) |
+| Publish the app on Google Play (step by step) | **[PLAY-STORE.md](PLAY-STORE.md)** |
 | Business setups (shop, restaurant, bookings) | [USE-CASES.md](USE-CASES.md) |
 | What's done and what's next | [ROADMAP.md](ROADMAP.md) |
 | External references | [REFERENCES.md](REFERENCES.md) |

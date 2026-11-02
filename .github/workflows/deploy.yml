@@ -44,6 +44,8 @@ jobs:
           API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
           DASHBOARD_PUBLIC_URL: ${{ vars.DASHBOARD_PUBLIC_URL }}
           WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+          AUTOCONFIRM_SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
+          AUTOCONFIRM_OPERATOR_NAME: ${{ vars.OPERATOR_NAME }}
 
   production:
     needs: staging
@@ -67,3 +69,5 @@ jobs:
           API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
           DASHBOARD_PUBLIC_URL: ${{ vars.DASHBOARD_PUBLIC_URL }}
           WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+          AUTOCONFIRM_SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
+          AUTOCONFIRM_OPERATOR_NAME: ${{ vars.OPERATOR_NAME }}

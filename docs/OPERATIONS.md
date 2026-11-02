@@ -88,11 +88,13 @@ Tools on Cloudflare (free or nearly free): Workers Analytics, `wrangler tail`, L
 - WhatsApp support number for merchants; reply targets: 15 min in peak seasons, otherwise same day.
 - **Canned answers:** phone offline, amount mismatch, refund (AutoConfirm can't refund; the merchant refunds from their UPI app), and "is my money safe" (money goes straight to their bank, and AutoConfirm never touches it).
 
-## 8. Data retention jobs (planned: Cron, daily 03:30 IST; not built yet)
-- `signals.raw_text_hash` and parsed fields: 180 days, then delete.
-- Payer name: mask after 30 days (`R***h`).
-- `idempotency` rows: 24 h. `pairing_codes`: 10 min. `webhook_deliveries`: 30 days.
-- Expire `pending` intents past `expires_at` + grace, and emit `payment_intent.expired`.
+## 8. Data retention (built: `apps/api/src/retention.ts`, daily 03:45 IST from the 5-minute cron)
+The privacy policy (`/privacy`) promises these, so change both together:
+- Signals: payer name and UTR blanked after 90 days; duplicate/ignored signals deleted after 90 days. Matched signals stay (reports need the received amount).
+- Payment intents: customer name/phone blanked after 1 year. The record stays for the shop's accounts.
+- Audit log: IP blanked after 90 days, entries deleted after 1 year. Events and webhook deliveries: 30 days. Parse failures: 7 days.
+- Idempotency rows: 2 days. Expired sessions, pairing codes, invites (after 7 days) and login-throttle rows: deleted.
+- Intent expiry and `payment_intent.expired` run in the location DO, not here.
 
 ## 9. Deployment configuration
 Step-by-step setup: [DEPLOY.md](DEPLOY.md). `tools/deploy/deploy.mjs` creates the resources and secrets below automatically.

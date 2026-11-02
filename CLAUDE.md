@@ -14,7 +14,7 @@ Read [README.md](README.md), then [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (re
 - **Server:**
   - Cloudflare Workers + Hono, written in TypeScript.
   - Durable Object `LocationDO`, one per `merchant:location:mode`. It runs the matching engine, the outbox and live WebSockets. `PasswordDO` hashes passwords.
-  - D1 is the source of truth. Queues deliver webhooks and push alerts, KV holds parser rules. A 5-minute cron marks phones offline (`alerts.ts`).
+  - D1 is the source of truth. Queues deliver webhooks and push alerts, KV holds parser rules. A 5-minute cron marks phones offline (`alerts.ts`) and once a day runs the data clean-up (`retention.ts`, promised by the privacy page).
 - **Android app:** Kotlin, NotificationListenerService, Room, WorkManager, OkHttp, Keystore.
 - **Dashboard:** SvelteKit on Cloudflare.
 - **Contracts:** API in [api/openapi.yaml](api/openapi.yaml), schema in [db/schema.sql](db/schema.sql).
@@ -76,6 +76,7 @@ Read [README.md](README.md), then [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (re
 - Browser e2e: start the API (`wrangler dev`) and the dashboard, then `npm run test:e2e` (Playwright Chromium). Dashboard e2e uses E2E_DASH (default http://127.0.0.1:5173).
 - Device simulator: `node tools/device-sim.mjs pair --code pc_… --api http://localhost:8787`, then `node tools/device-sim.mjs signal --amount 930.07`
 - Android: `cd apps/android && ./gradlew testDebugUnitTest assembleDebug` (needs JDK 17+ and Android SDK 36)
+- Play release: Actions → "Android release" builds the signed `.aab` into a draft GitHub release. Guide: docs/PLAY-STORE.md. If the app starts reading or sending anything new, update `DISCLOSURE_TEXT`, the `/privacy` page and the Data safety answers together.
 - Deploy: see docs/DEPLOY.md. Push to `main` deploys staging; "Run workflow" deploys staging then production (`tools/deploy/deploy.mjs`). Dry run: `node tools/deploy/deploy.mjs --env production --dry-run`
 - Operator: `node tools/admin.mjs create-merchant --api <url> --name … --owner <email>` (needs AUTOCONFIRM_ADMIN_TOKEN)
 
