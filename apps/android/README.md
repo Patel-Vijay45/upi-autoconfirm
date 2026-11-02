@@ -11,7 +11,9 @@ Needs JDK 17+ and the Android SDK (platform 36). Point `ANDROID_HOME` at the SDK
 
 The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Install it with `adb install` or by copying it to the phone.
 
-Release build (minified): `./gradlew assembleRelease`, then sign the APK with your own key. Keystores are git-ignored.
+Release build (minified): `./gradlew bundleRelease assembleRelease`. To sign, set `AC_UPLOAD_KEYSTORE`, `AC_UPLOAD_STORE_PASSWORD` and `AC_UPLOAD_KEY_ALIAS`; `-Pautoconfirm.versionCode=` and `-Pautoconfirm.privacyUrl=` set the build number and the in-app privacy link. The **Android release** GitHub workflow does all of this from secrets: see [docs/PLAY-STORE.md](../../docs/PLAY-STORE.md). Keystores are git-ignored.
+
+Demo mode: on the first screen, "No shop yet? See how it works (demo)" shows the checklist and example payments without pairing (for Play reviewers).
 
 ## Certificate pinning (release)
 Pass your API host and two SPKI pins (primary + backup):

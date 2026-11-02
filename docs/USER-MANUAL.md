@@ -75,6 +75,10 @@ The counter phone is an **Android** phone that has the shop's **payment app** (t
 Most shops have **one UPI ID**, so they need **one counter**. Enter the UPI ID once, when you add the counter. A counter means "one UPI ID", not "one desk": if several desks or a backup phone use the same UPI ID, pair **more phones to the same counter** (the same payment is then counted once). Add a second counter only for a different UPI ID (the dashboard refuses the same UPI ID twice).
 
 ### D2. Install the AutoConfirm app
+**From Google Play** (once it's published): install **AutoConfirm: UPI shop alerts** and skip to D3. You also don't need the "Allow restricted settings" step in D4.
+If you installed the APK before, uninstall it first (Play's version can't update it), then pair again.
+
+**From the APK file:**
 1. Open the APK file on the phone.
 2. If Android says the source isn't allowed: **Settings → Allow from this source**, then back → **Install**.
 3. If **Play Protect** blocks it ("blocked to protect your device"):

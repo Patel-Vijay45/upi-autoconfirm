@@ -20,6 +20,7 @@
 		</label>
 		<button disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
 	</form>
+	<p class="small muted"><a href="/privacy">Privacy policy</a></p>
 </div>
 
 <style>

@@ -7,7 +7,8 @@ AutoConfirm is a **standalone, reusable service**. Any number of projects (onlin
 - ✅ First shop created through the dashboard's `/operator` page; owner logged in with an authenticator code.
 - ✅ First real phone test: the Android app paired. Google Pay's "paid you ₹1.00" notification was captured and turned into the live rules (`rules/parser-rules.json`).
 - ▶ **Now:** the real ₹1 end-to-end test (dashboard **New payment** → pay with Google Pay → **Paid ✓**). Then PhonePe/Paytm samples.
-- ▶ **Next:** the small follow-ups below, the Play Store internal-testing release, then Step 5.
+- ✅ Play Store ready: disclosure, privacy page, demo mode, signed release workflow, store graphics, data retention job. Steps: [PLAY-STORE.md](PLAY-STORE.md).
+- ▶ **Next:** Play internal testing → closed test (12 testers × 14 days) → production. Then Step 5.
 
 ## Step 1: Core service (API + matching engine) ✅ built
 **Not done yet (small follow-ups):**
@@ -79,7 +80,7 @@ See [USE-CASES.md](USE-CASES.md).
 
 ## Step 6: Product (later)
 - **Legal review** (COMPLIANCE.md) before onboarding outside merchants.
-- Play Store release (follow the notification-listener policy declaration).
+- Play Store release: prepared (see [PLAY-STORE.md](PLAY-STORE.md)); waiting on the developer account and the closed test.
 - Plans: free tier (e.g. 300 confirmations/month), then a small flat monthly fee. Never a % of the payment.
 - Soundbox and bank-app parsers for more coverage; email-alert parsing as a backup channel.
 - Optional: an official bank collect API (e.g. a current-account UPI API from a partner bank) as a "pro" signal source with callbacks and no phone needed.

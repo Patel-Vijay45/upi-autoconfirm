@@ -7,3 +7,8 @@ __pycache__/
 .device-sim.json
 .dev.vars
 *.log
+
+# Android signing keys (never commit)
+*.jks
+*.jks.b64
+*.keystore

@@ -207,6 +207,7 @@ Tests: `test/engine.test.ts` (scenarios), `test/engine.property.test.ts` (random
 |---|---|
 | `index.ts` | Worker entry: `fetch` = Hono app, `queue` = webhook + push consumer, `scheduled` = 5-minute phone-offline check; exports `LocationDO`, `PasswordDO`. |
 | `alerts.ts` | Phone-offline alerts: `checkOfflinePhones` (cron), `markOffline` (one `device.offline` per outage), `backOnline` (from the heartbeat), `alertIfCounterOffline` (payment created / "I have paid" at a counter with no online phone). |
+| `retention.ts` | Daily data clean-up (03:45 IST, from the 5-minute cron): blanks old payer/customer details, deletes old logs. Must match the privacy page. |
 | `push.ts` | Push alerts: which events alert (`wantsPush`; never walk-ins), the alert text (`noticeFor`), `sendPush` (encrypt + VAPID + POST). |
 | `app.ts` | Most routes: locations, pairing codes, payment intents, signals inbox, webhook endpoints, public status/claim, device API, `/admin/v1/merchants`. Also the `/v1/*` auth middleware and helpers (`parseJson`, `loadIntent`, `overlay`, `shortPayer`). |
 | `dashboard.ts` | Dashboard routes: login/logout/me, invites, users, API keys, devices, location update, webhook enable/disable/deliveries, events/resend, reports (+CSV), settings, audit log, operator invites. `requireOperator` (throttled). |
@@ -243,6 +244,7 @@ Tests (`apps/api/test`, run in workerd with real D1/DO/Queues via `@cloudflare/v
 - `src/lib/format.ts` — `inr()` (Indian grouping), `parseRupees()`, dates in IST, role helpers (`can.manage/act/develop`).
 - `src/lib/auto-refresh.svelte.ts` — `autoRefresh(ms, when)`: re-load the page while it's on screen, pausing after 10 min (free-plan request budget).
 - `src/lib/AlertsCard.svelte` + `src/service-worker.ts` + `src/routes/alerts/+server.ts` — "Turn on alerts on this phone" (Web Push). The service worker only shows alerts; it caches nothing.
+- `src/routes/privacy` — the public privacy policy (Google Play links to it). Contact from `SUPPORT_EMAIL` / `OPERATOR_NAME` vars.
 - `src/routes/` — `+page` (payments + New payment), `payments/[id]`, `inbox` (tabs: Needs a look / Other payments), `locations` (+ `[id]/pair`), `developers`, `reports` (+ `payments.csv`), `settings`, `login`, `setup/[token]`, `operator`, `logout`, `mode`.
 - `svelte.config.js` — strict CSP. `wrangler.jsonc` — service binding `API`, `nodejs_als` flag.
 
@@ -259,6 +261,8 @@ Rules: forms use SvelteKit **form actions** (work without JS; CSRF-checked). Inp
 | `data/Db.kt` | Room: `outbox` (queued signals, deleted after send) and `recent` (today's list + on-phone dedupe). |
 | `service/PaymentListenerService.kt` | NotificationListenerService: drops non-payment apps on the first line, heartbeat every 5 min while connected. |
 | `work/Sync.kt`, `work/SyncWorker.kt` | Send queue, heartbeat, refresh rules (15 min), boot receiver. |
+| `ui/MainActivity.kt` (more) | `DemoScreen` (reviewers, not paired), `NotificationAccessDisclosure` + `DISCLOSURE_TEXT` (Play prominent disclosure; `PolicyTest`), `PrivacyLink` (`BuildConfig.PRIVACY_URL`). |
+| `play/` | Store icon and feature graphic (`make-graphics.cjs` re-creates them). Release builds: `.github/workflows/android-release.yml`, guide: PLAY-STORE.md. |
 | `work/Health.kt` | "AutoConfirm can't see payments" notification on the phone when notification access is off. |
 | `ui/MainActivity.kt` | Compose screens: pair, checklist (with Play-policy disclosure), status/today list. |
 

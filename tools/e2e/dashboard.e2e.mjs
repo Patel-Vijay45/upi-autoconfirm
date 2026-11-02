@@ -265,6 +265,10 @@ async function main() {
 	await p.waitForURL(`${DASH}/login`);
 	await p.goto(`${DASH}/`);
 	ok(p.url() === `${DASH}/login`, 'logged out: pages redirect to login');
+	await p.goto(`${DASH}/privacy`);
+	ok(p.url() === `${DASH}/privacy` && (await p.getByRole('heading', { name: 'Privacy policy' }).isVisible()), 'privacy policy is public (Google Play)');
+	ok(await p.locator('#delete').isVisible(), 'privacy policy explains deleting data');
+	await p.goto(`${DASH}/login`);
 	await p.fill('input[name=email]', ownerEmail);
 	await p.fill('input[name=password]', 'wrong password');
 	await p.click('button:has-text("Log in")');

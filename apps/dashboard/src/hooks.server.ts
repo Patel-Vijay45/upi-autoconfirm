@@ -2,7 +2,12 @@ import { redirect, type Handle } from '@sveltejs/kit';
 import { MODE_COOKIE, SESSION_COOKIE } from '$lib/server/api.ts';
 
 const PUBLIC = (path: string) =>
-	path === '/login' || path === '/operator' || path.startsWith('/setup/') || path === '/service-worker.js' || path === '/manifest.webmanifest';
+	path === '/login' ||
+	path === '/operator' ||
+	path === '/privacy' ||
+	path.startsWith('/setup/') ||
+	path === '/service-worker.js' ||
+	path === '/manifest.webmanifest';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.session = event.cookies.get(SESSION_COOKIE) ?? null;

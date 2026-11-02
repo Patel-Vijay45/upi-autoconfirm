@@ -1,0 +1,97 @@
+# Builds the Android app for Google Play: a signed .aab (upload this to Play Console) and a signed .apk
+# (to install on a phone directly). Press "Run workflow" in Actions → "Android release".
+# The files are attached to a DRAFT GitHub release, which only people with write access to the repo can see.
+#
+# Needs these secrets (Settings → Environments → production, or repository secrets). See docs/PLAY-STORE.md.
+#   ANDROID_UPLOAD_KEYSTORE_B64   the upload keystore (.jks), base64
+#   ANDROID_UPLOAD_KEYSTORE_PASSWORD
+#   ANDROID_UPLOAD_KEY_ALIAS      usually "upload"
+# And one variable for the in-app privacy policy link (otherwise it is worked out from the dashboard address):
+#   PRIVACY_POLICY_URL            e.g. https://autoconfirm-dashboard.<subdomain>.workers.dev/privacy
+name: Android release
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'What changed (shown in the release; also paste it into Play Console)'
+        required: false
+        default: 'Bug fixes and improvements.'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Check settings
+        env:
+          KS: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          KS_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
+          DASHBOARD_PUBLIC_URL: ${{ vars.DASHBOARD_PUBLIC_URL }}
+          WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$KS_PASSWORD" ]; then
+            echo "::error::Upload key secrets are missing (ANDROID_UPLOAD_KEYSTORE_B64, ANDROID_UPLOAD_KEYSTORE_PASSWORD). See docs/PLAY-STORE.md step 2."
+            exit 1
+          fi
+          url="$PRIVACY_POLICY_URL"
+          [ -z "$url" ] && [ -n "$DASHBOARD_PUBLIC_URL" ] && url="${DASHBOARD_PUBLIC_URL%/}/privacy"
+          [ -z "$url" ] && [ -n "$WORKERS_SUBDOMAIN" ] && url="https://autoconfirm-dashboard.${WORKERS_SUBDOMAIN}.workers.dev/privacy"
+          if [ -z "$url" ]; then
+            echo "::error::Set the PRIVACY_POLICY_URL variable (your dashboard address + /privacy). See docs/PLAY-STORE.md step 2."
+            exit 1
+          fi
+          case "$url" in https://*) ;; *) echo "::error::PRIVACY_POLICY_URL must start with https://"; exit 1 ;; esac
+          echo "PRIVACY_URL=$url" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)" >> "$GITHUB_ENV"
+
+      - name: Unpack upload key
+        env:
+          KS: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+        run: echo "$KS" | base64 -d > "$RUNNER_TEMP/upload.jks"
+
+      - name: Test and build (signed)
+        env:
+          AC_UPLOAD_KEYSTORE: ${{ runner.temp }}/upload.jks
+          AC_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          AC_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+        run: >-
+          ./gradlew --no-daemon testDebugUnitTest bundleRelease assembleRelease
+          -Pautoconfirm.versionCode="$VERSION_CODE" -Pautoconfirm.privacyUrl="$PRIVACY_URL"
+
+      - name: Check signatures
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | grep -m1 "SHA-256"
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab | grep -q "jar verified" && echo "aab signed"
+          mkdir -p out
+          cp app/build/outputs/bundle/release/app-release.aab "out/autoconfirm-$VERSION_NAME-$VERSION_CODE.aab"
+          cp app/build/outputs/apk/release/app-release.apk "out/autoconfirm-$VERSION_NAME-$VERSION_CODE.apk"
+
+      - name: Draft release with the files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          rm -f "$RUNNER_TEMP/upload.jks"
+          gh release create "android-$VERSION_NAME-$VERSION_CODE" out/* --draft --target "$GITHUB_SHA" \
+            --title "Android $VERSION_NAME (build $VERSION_CODE)" \
+            --notes "$NOTES
+
+          Upload the .aab in Play Console (Test and release → your track → Create new release). The .apk is for installing directly on a phone.
+          Privacy policy link in the app: $PRIVACY_URL"
+          echo "### Ready: Releases → Android $VERSION_NAME (build $VERSION_CODE) (draft)" >> "$GITHUB_STEP_SUMMARY"

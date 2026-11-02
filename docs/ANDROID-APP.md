@@ -99,3 +99,7 @@ Real-phone status (2026-11-01): Google Pay "<payer> paid you ₹X" alerts and ID
 - **Google Play:** apps using `NotificationListenerService` need a clear in-app disclosure and a privacy policy, and a store listing that explains the core use (see COMPLIANCE.md). Expect review questions.
 - **Fallback:** a signed APK from our website, with a pinned update check inside the app.
 - The minimum app version is enforced by the server: older apps are told to update before they can send.
+
+## Google Play
+Ready to publish: prominent disclosure (`DISCLOSURE_TEXT`, covers payment apps and bank SMS alerts), in-app privacy link, demo mode for reviewers, no restricted permissions, target API 36, 16 KB-aligned native code, signed `.aab` from the **Android release** workflow. Step-by-step with all Play Console answers: [PLAY-STORE.md](PLAY-STORE.md).
+

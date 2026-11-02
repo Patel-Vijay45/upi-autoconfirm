@@ -4,7 +4,7 @@
 //   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… node tools/deploy/deploy.mjs --env staging
 //   node tools/deploy/deploy.mjs --env production --dry-run     (no Cloudflare calls; checks the build)
 //
-// Optional env: AUTOCONFIRM_ADMIN_TOKEN (operator token, ≥ 32 chars), API_PUBLIC_URL / DASHBOARD_PUBLIC_URL
+// Optional env: AUTOCONFIRM_ADMIN_TOKEN (operator token, ≥ 32 chars), API_PUBLIC_URL / DASHBOARD_PUBLIC_URL, AUTOCONFIRM_SUPPORT_EMAIL / AUTOCONFIRM_OPERATOR_NAME (privacy page)
 // (custom domains; default *.workers.dev), WORKERS_SUBDOMAIN (name for a new account's workers.dev subdomain).
 //
 // Safe to run again and again: it creates missing resources, never deletes, and never replaces existing
@@ -191,6 +191,12 @@ async function main() {
 	dash.name = NAMES.dash;
 	dash.workers_dev = true;
 	dash.services = [{ binding: 'API', service: NAMES.api }];
+	// Shown on the public privacy policy page (/privacy), which Google Play links to.
+	const policyVars = {};
+	if (process.env.AUTOCONFIRM_SUPPORT_EMAIL) policyVars.SUPPORT_EMAIL = process.env.AUTOCONFIRM_SUPPORT_EMAIL;
+	if (process.env.AUTOCONFIRM_OPERATOR_NAME) policyVars.OPERATOR_NAME = process.env.AUTOCONFIRM_OPERATOR_NAME;
+	if (Object.keys(policyVars).length) dash.vars = { ...(dash.vars ?? {}), ...policyVars };
+	else console.log('  SUPPORT_EMAIL not set: the privacy page shows no contact address (Google Play needs one).');
 	const dashConfig = join(ROOT, 'apps/dashboard/wrangler.generated.json');
 	writeFileSync(dashConfig, JSON.stringify(dash, null, 2));
 	console.log('  apps/api/wrangler.generated.json, apps/dashboard/wrangler.generated.json');

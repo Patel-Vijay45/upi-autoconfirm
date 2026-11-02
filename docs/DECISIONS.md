@@ -118,3 +118,11 @@ Format: **Decision** — why — consequences.
     - Only real push-service hosts are accepted, so a subscription can't make the Worker call arbitrary URLs.
     - The VAPID key is created once by the deploy script and never replaced (that would break every subscription).
     - The app also warns on the phone itself when notification access is turned off.
+
+31. **Google Play release (supersedes 24): demo mode for reviewers, privacy page on the dashboard, upload-key builds in GitHub Actions.**
+    Shops shouldn't fight Play Protect and "restricted settings". Play needs a prominent disclosure, an in-app and listing privacy policy, an honest Data safety form and a way for reviewers in.
+    - The disclosure names bank SMS alerts too (they are read as notifications; no SMS permission). `PolicyTest` keeps it complete.
+    - Reviewers use **demo mode** (not paired, so nothing is read or sent) instead of a shared test account with MFA.
+    - The privacy policy is a public dashboard page, and its retention periods are enforced by a daily clean-up job, so the policy stays true.
+    - Release builds are signed in CI from upload-key secrets and land in a draft GitHub release (only the owner sees it). Google holds the app-signing key (Play App Signing).
+    - Step-by-step answers: PLAY-STORE.md.
