@@ -27,6 +27,7 @@ import { passwordHasher } from './password-do.ts';
 import { iso } from './present.ts';
 import { settingsFromJson } from './settings.ts';
 import { OFFLINE_AFTER_MS } from './alerts.ts';
+import { projectWhere, upiIdElsewhereError, upiIdUsedByAnotherMerchant } from './projects.ts';
 import { pushPublicKey, sendPush } from './push.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
@@ -191,7 +192,10 @@ const Email = z.string().trim().toLowerCase().email().max(200);
 const Login = z.object({ email: Email, password: z.string().min(1).max(200), otp: z.string().max(10).optional() }).strict();
 const Invite = z.object({ email: Email, role: z.enum(USER_ROLES) }).strict();
 const Setup = z.object({ password: z.string().min(PASSWORD_MIN, `password must be at least ${PASSWORD_MIN} characters`).max(200), otp: z.string().max(10).optional() }).strict();
-const NewKey = z.object({ kind: z.enum(['secret', 'publishable']) }).strict();
+const NewKey = z.object({ kind: z.enum(['secret', 'publishable']), project_id: z.string().max(64).optional() }).strict();
+const NewProject = z.object({ name: z.string().trim().min(1).max(60) }).strict();
+const UpdateProject = z.object({ name: z.string().trim().min(1).max(60).optional(), active: z.boolean().optional() }).strict();
+const MAX_PROJECTS = 50;
 const UpdateLocation = z.object({ name: z.string().min(1).max(80).optional(), active: z.boolean().optional() }).strict();
 const Limit = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
 const DateQ = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional();
@@ -358,12 +362,12 @@ export function registerDashboard(app: Hono<AppEnv>) {
 	app.get('/v1/api_keys', async (c) => {
 		const auth = c.get('auth');
 		requireRole(auth, 'owner', 'admin', 'developer');
-		const rows = await c.env.DB.prepare('SELECT id, kind, livemode, prefix, created_at, last_used_at, revoked_at FROM api_keys WHERE merchant_id = ? AND livemode = ? ORDER BY created_at DESC')
+		const rows = await c.env.DB.prepare('SELECT id, kind, livemode, prefix, created_at, last_used_at, revoked_at, project_id FROM api_keys WHERE merchant_id = ? AND livemode = ? ORDER BY created_at DESC')
 			.bind(auth.merchantId, auth.livemode ? 1 : 0)
-			.all<{ id: string; kind: string; livemode: number; prefix: string; created_at: number; last_used_at: number | null; revoked_at: number | null }>();
+			.all<{ id: string; kind: string; livemode: number; prefix: string; created_at: number; last_used_at: number | null; revoked_at: number | null; project_id: string | null }>();
 		return c.json({
 			object: 'list',
-			data: rows.results.map((k) => ({ id: k.id, object: 'api_key', kind: k.kind, livemode: k.livemode === 1, prefix: k.prefix, created: iso(k.created_at), last_used: iso(k.last_used_at), revoked: k.revoked_at !== null })),
+			data: rows.results.map((k) => ({ id: k.id, object: 'api_key', kind: k.kind, livemode: k.livemode === 1, prefix: k.prefix, project_id: k.project_id, created: iso(k.created_at), last_used: iso(k.last_used_at), revoked: k.revoked_at !== null })),
 		});
 	});
 
@@ -373,14 +377,56 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		requireSession(auth);
 		if (auth.livemode && auth.role === 'developer') throw new ApiError(403, 'permission', 'forbidden', 'developers can create test keys only');
 		const body = parse(await readBody(c), NewKey);
+		const projectId = body.project_id ?? null;
+		if (projectId) {
+			const p = await c.env.DB.prepare('SELECT active FROM projects WHERE id = ? AND merchant_id = ?').bind(projectId, auth.merchantId).first<{ active: number }>();
+			if (!p) throw notFound('project');
+			if (p.active !== 1) throw new ApiError(422, 'invalid_request', 'project_paused', 'this project is paused', 'project_id');
+		}
 		const key = `${body.kind === 'secret' ? 'sk' : 'pk'}_${auth.livemode ? 'live' : 'test'}_${randomSecret()}`;
 		const id = randomId('key');
 		const now = Date.now();
-		await c.env.DB.prepare('INSERT INTO api_keys (id, merchant_id, kind, livemode, prefix, key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-			.bind(id, auth.merchantId, body.kind, auth.livemode ? 1 : 0, key.slice(0, 12), await sha256Hex(key), now)
+		await c.env.DB.prepare('INSERT INTO api_keys (id, merchant_id, kind, livemode, prefix, key_hash, created_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+			.bind(id, auth.merchantId, body.kind, auth.livemode ? 1 : 0, key.slice(0, 12), await sha256Hex(key), now, projectId)
 			.run();
-		await audit(c.env, auth, c, 'key.create', id, { kind: body.kind, livemode: auth.livemode });
-		return c.json({ id, object: 'api_key', kind: body.kind, livemode: auth.livemode, prefix: key.slice(0, 12), key, created: iso(now) }, 201);
+		await audit(c.env, auth, c, 'key.create', id, { kind: body.kind, livemode: auth.livemode, project_id: projectId });
+		return c.json({ id, object: 'api_key', kind: body.kind, livemode: auth.livemode, prefix: key.slice(0, 12), project_id: projectId, key, created: iso(now) }, 201);
+	});
+
+	// ----- projects (several websites/apps on one UPI ID) -----
+
+	const projectView = (p: { id: string; name: string; active: number; created_at: number }) => ({ id: p.id, object: 'project', name: p.name, active: p.active === 1, created: iso(p.created_at) });
+
+	app.get('/v1/projects', async (c) => {
+		const auth = c.get('auth');
+		const rows = await c.env.DB.prepare('SELECT id, name, active, created_at FROM projects WHERE merchant_id = ? ORDER BY created_at').bind(auth.merchantId).all<{ id: string; name: string; active: number; created_at: number }>();
+		return c.json({ object: 'list', data: rows.results.map(projectView) });
+	});
+
+	app.post('/v1/projects', async (c) => {
+		const auth = c.get('auth');
+		requireRole(auth, 'key', 'owner', 'admin', 'developer');
+		const body = parse(await readBody(c), NewProject);
+		const count = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM projects WHERE merchant_id = ?').bind(auth.merchantId).first<{ n: number }>();
+		if ((count?.n ?? 0) >= MAX_PROJECTS) throw new ApiError(422, 'invalid_request', 'too_many_projects', `at most ${MAX_PROJECTS} projects`);
+		const p = { id: randomId('prj'), name: body.name, active: 1, created_at: Date.now() };
+		await c.env.DB.prepare('INSERT INTO projects (id, merchant_id, name, active, created_at) VALUES (?, ?, ?, 1, ?)').bind(p.id, auth.merchantId, p.name, p.created_at).run();
+		await audit(c.env, auth, c, 'project.create', p.id, { name: p.name });
+		return c.json(projectView(p), 201);
+	});
+
+	app.post('/v1/projects/:id', async (c) => {
+		const auth = c.get('auth');
+		requireRole(auth, 'key', 'owner', 'admin', 'developer');
+		const body = parse(await readBody(c), UpdateProject);
+		const cur = await c.env.DB.prepare('SELECT id, name, active, created_at FROM projects WHERE id = ? AND merchant_id = ?')
+			.bind(c.req.param('id'), auth.merchantId)
+			.first<{ id: string; name: string; active: number; created_at: number }>();
+		if (!cur) throw notFound('project');
+		const next = { ...cur, name: body.name ?? cur.name, active: body.active === undefined ? cur.active : body.active ? 1 : 0 };
+		await c.env.DB.prepare('UPDATE projects SET name = ?, active = ? WHERE id = ? AND merchant_id = ?').bind(next.name, next.active, cur.id, auth.merchantId).run();
+		await audit(c.env, auth, c, 'project.update', cur.id, body);
+		return c.json(projectView(next));
 	});
 
 	app.post('/v1/api_keys/:id/revoke', async (c) => {
@@ -447,6 +493,11 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		if (!loc) throw notFound('location');
 		const name = body.name ?? loc.name;
 		const active = body.active === undefined ? loc.active : body.active ? 1 : 0;
+		if (active === 1 && loc.active !== 1) {
+			const dup = await c.env.DB.prepare('SELECT id FROM locations WHERE merchant_id = ? AND id != ? AND upi_vpa = ? COLLATE NOCASE AND active = 1').bind(auth.merchantId, loc.id, loc.upi_vpa).first();
+			if (dup) throw new ApiError(409, 'conflict', 'upi_id_in_use', 'another counter already uses this UPI ID', 'upi_vpa');
+			if (await upiIdUsedByAnotherMerchant(c.env, auth.merchantId, loc.upi_vpa)) throw upiIdElsewhereError();
+		}
 		await c.env.DB.prepare('UPDATE locations SET name = ?, active = ? WHERE id = ? AND merchant_id = ?').bind(name, active, loc.id, auth.merchantId).run();
 		await audit(c.env, auth, c, 'location.update', loc.id, body);
 		return c.json({ id: loc.id, object: 'location', name, upi_vpa: loc.upi_vpa, upi_payee_name: loc.upi_payee_name, active: active === 1, created: iso(loc.created_at) });
@@ -458,8 +509,9 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		app.post(`/v1/webhook_endpoints/:id/${action}`, async (c) => {
 			const auth = c.get('auth');
 			requireRole(auth, 'key', 'owner', 'admin', 'developer');
-			const r = await c.env.DB.prepare('UPDATE webhook_endpoints SET enabled = ? WHERE id = ? AND merchant_id = ? AND livemode = ?')
-				.bind(action === 'enable' ? 1 : 0, c.req.param('id'), auth.merchantId, auth.livemode ? 1 : 0)
+			const pw = projectWhere(auth, undefined);
+			const r = await c.env.DB.prepare(`UPDATE webhook_endpoints SET enabled = ? WHERE id = ? AND merchant_id = ? AND livemode = ?${pw.sql}`)
+				.bind(action === 'enable' ? 1 : 0, c.req.param('id'), auth.merchantId, auth.livemode ? 1 : 0, ...pw.args)
 				.run();
 			if (r.meta.changes !== 1) throw notFound('webhook endpoint');
 			await audit(c.env, auth, c, `webhook.${action}`, c.req.param('id'));
@@ -471,13 +523,15 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		const auth = c.get('auth');
 		requireRole(auth, 'key', 'owner', 'admin', 'developer');
 		const q = query(c, Limit.extend({ endpoint_id: z.string().max(64).optional() }));
+		const pw = projectWhere(auth, undefined, 'w.project_id');
 		const rows = await c.env.DB.prepare(
 			`SELECT d.id, d.event_id, d.endpoint_id, d.attempt, d.status, d.http_status, d.error, d.next_attempt_at, d.created_at, e.type
 			 FROM webhook_deliveries d JOIN events e ON e.id = d.event_id AND e.merchant_id = d.merchant_id
-			 WHERE d.merchant_id = ? AND e.livemode = ? ${q.endpoint_id ? 'AND d.endpoint_id = ?' : ''}
+			 JOIN webhook_endpoints w ON w.id = d.endpoint_id AND w.merchant_id = d.merchant_id
+			 WHERE d.merchant_id = ? AND e.livemode = ? ${q.endpoint_id ? 'AND d.endpoint_id = ?' : ''}${pw.sql}
 			 ORDER BY d.id DESC LIMIT ?`,
 		)
-			.bind(...[auth.merchantId, auth.livemode ? 1 : 0, ...(q.endpoint_id ? [q.endpoint_id] : []), q.limit])
+			.bind(...[auth.merchantId, auth.livemode ? 1 : 0, ...(q.endpoint_id ? [q.endpoint_id] : []), ...pw.args, q.limit])
 			.all<{ id: number; event_id: string; endpoint_id: string; attempt: number; status: string; http_status: number | null; error: string | null; next_attempt_at: number | null; created_at: number; type: string }>();
 		return c.json({
 			object: 'list',
@@ -488,17 +542,19 @@ export function registerDashboard(app: Hono<AppEnv>) {
 	app.get('/v1/events', async (c) => {
 		const auth = c.get('auth');
 		requireRole(auth, 'key', 'owner', 'admin', 'developer');
-		const q = query(c, Limit.extend({ type: z.string().max(60).optional() }));
-		const rows = await c.env.DB.prepare(`SELECT id, type, object_id, created_at FROM events WHERE merchant_id = ? AND livemode = ? ${q.type ? 'AND type = ?' : ''} ORDER BY created_at DESC LIMIT ?`)
-			.bind(...[auth.merchantId, auth.livemode ? 1 : 0, ...(q.type ? [q.type] : []), q.limit])
-			.all<{ id: string; type: string; object_id: string; created_at: number }>();
-		return c.json({ object: 'list', data: rows.results.map((e) => ({ id: e.id, object: 'event', type: e.type, object_id: e.object_id, created: iso(e.created_at) })) });
+		const q = query(c, Limit.extend({ type: z.string().max(60).optional(), project_id: z.string().max(64).optional() }));
+		const pw = projectWhere(auth, q.project_id);
+		const rows = await c.env.DB.prepare(`SELECT id, type, object_id, created_at, project_id FROM events WHERE merchant_id = ? AND livemode = ? ${q.type ? 'AND type = ?' : ''}${pw.sql} ORDER BY created_at DESC LIMIT ?`)
+			.bind(...[auth.merchantId, auth.livemode ? 1 : 0, ...(q.type ? [q.type] : []), ...pw.args, q.limit])
+			.all<{ id: string; type: string; object_id: string; created_at: number; project_id: string | null }>();
+		return c.json({ object: 'list', data: rows.results.map((e) => ({ id: e.id, object: 'event', type: e.type, object_id: e.object_id, project_id: e.project_id, created: iso(e.created_at) })) });
 	});
 
 	app.post('/v1/events/:id/resend', async (c) => {
 		const auth = c.get('auth');
 		requireRole(auth, 'key', 'owner', 'admin', 'developer');
-		const ev = await c.env.DB.prepare('SELECT id FROM events WHERE id = ? AND merchant_id = ? AND livemode = ?').bind(c.req.param('id'), auth.merchantId, auth.livemode ? 1 : 0).first<{ id: string }>();
+		const pw = projectWhere(auth, undefined);
+		const ev = await c.env.DB.prepare(`SELECT id FROM events WHERE id = ? AND merchant_id = ? AND livemode = ?${pw.sql}`).bind(c.req.param('id'), auth.merchantId, auth.livemode ? 1 : 0, ...pw.args).first<{ id: string }>();
 		if (!ev) throw notFound('event');
 		await c.env.WEBHOOKS.send({ eventId: ev.id, merchantId: auth.merchantId });
 		await audit(c.env, auth, c, 'event.resend', ev.id);
@@ -509,19 +565,21 @@ export function registerDashboard(app: Hono<AppEnv>) {
 
 	app.get('/v1/reports/summary', async (c) => {
 		const auth = c.get('auth');
-		const q = query(c, z.object({ from: DateQ, to: DateQ, location_id: z.string().max(64).optional() }));
+		const q = query(c, z.object({ from: DateQ, to: DateQ, location_id: z.string().max(64).optional(), project_id: z.string().max(64).optional() }));
 		const [start, end] = dayRange(q.from, q.to);
 		const loc = q.location_id ? 'AND pi.location_id = ?' : '';
 		const locArg = q.location_id ? [q.location_id] : [];
+		// Projects split paid orders; inbox and walk-in money belong to the whole shop (one UPI ID).
+		const prj = projectWhere(auth, q.project_id, 'pi.project_id');
 		const paid = await c.env.DB.prepare(
 			`SELECT date((pi.paid_at + ${IST_MS}) / 1000, 'unixepoch') AS day, COUNT(*) AS paid_count, SUM(pi.amount) AS amount,
 			        SUM(COALESCE(s.amount, pi.unique_amount)) AS received, SUM(CASE WHEN pi.paid_source = 'auto' THEN 1 ELSE 0 END) AS auto_count,
 			        SUM(pi.late) AS late_count, SUM(pi.amount_mismatch) AS mismatch_count
 			 FROM payment_intents pi LEFT JOIN signals s ON s.id = pi.matched_signal_id AND s.merchant_id = pi.merchant_id
-			 WHERE pi.merchant_id = ? AND pi.livemode = ? AND pi.status = 'paid' AND pi.paid_at >= ? AND pi.paid_at < ? ${loc}
+			 WHERE pi.merchant_id = ? AND pi.livemode = ? AND pi.status = 'paid' AND pi.paid_at >= ? AND pi.paid_at < ? ${loc}${prj.sql}
 			 GROUP BY day ORDER BY day`,
 		)
-			.bind(auth.merchantId, auth.livemode ? 1 : 0, start, end, ...locArg)
+			.bind(auth.merchantId, auth.livemode ? 1 : 0, start, end, ...locArg, ...prj.args)
 			.all<{ day: string; paid_count: number; amount: number; received: number; auto_count: number; late_count: number; mismatch_count: number }>();
 		const inbox = await c.env.DB.prepare(
 			`SELECT date((received_at + ${IST_MS}) / 1000, 'unixepoch') AS day,
@@ -547,29 +605,31 @@ export function registerDashboard(app: Hono<AppEnv>) {
 			(t, d) => ({ paid_count: t.paid_count + d.paid_count, received: t.received + d.received, auto_count: t.auto_count + d.auto_count, open_inbox: t.open_inbox + d.open_inbox, walk_in_count: t.walk_in_count + d.walk_in_count, walk_in_received: t.walk_in_received + d.walk_in_received }),
 			{ paid_count: 0, received: 0, auto_count: 0, open_inbox: 0, walk_in_count: 0, walk_in_received: 0 },
 		);
-		return c.json({ object: 'report', from: istDate(start), to: istDate(end - 1), days, total: { ...total, received_display: formatPaise(total.received), walk_in_received_display: formatPaise(total.walk_in_received) } });
+		return c.json({ object: 'report', from: istDate(start), to: istDate(end - 1), project_id: q.project_id ?? null, days, total: { ...total, received_display: formatPaise(total.received), walk_in_received_display: formatPaise(total.walk_in_received) } });
 	});
 
 	app.get('/v1/reports/payments.csv', async (c) => {
 		const auth = c.get('auth');
-		const q = query(c, z.object({ from: DateQ, to: DateQ }));
+		const q = query(c, z.object({ from: DateQ, to: DateQ, project_id: z.string().max(64).optional() }));
+		const prj = projectWhere(auth, q.project_id, 'pi.project_id');
 		const [start, end] = dayRange(q.from, q.to);
 		const rows = await c.env.DB.prepare(
 			`SELECT pi.id, pi.order_id, pi.status, pi.amount, pi.unique_amount, COALESCE(s.amount, CASE WHEN pi.status = 'paid' THEN pi.unique_amount END) AS received,
-			        pi.created_at, pi.paid_at, pi.paid_source, pi.late, pi.amount_mismatch, l.name AS location
+			        pi.created_at, pi.paid_at, pi.paid_source, pi.late, pi.amount_mismatch, l.name AS location, p.name AS project
 			 FROM payment_intents pi
 			 LEFT JOIN signals s ON s.id = pi.matched_signal_id AND s.merchant_id = pi.merchant_id
 			 LEFT JOIN locations l ON l.id = pi.location_id AND l.merchant_id = pi.merchant_id
-			 WHERE pi.merchant_id = ? AND pi.livemode = ? AND pi.created_at >= ? AND pi.created_at < ?
+			 LEFT JOIN projects p ON p.id = pi.project_id AND p.merchant_id = pi.merchant_id
+			 WHERE pi.merchant_id = ? AND pi.livemode = ? AND pi.created_at >= ? AND pi.created_at < ?${prj.sql}
 			 ORDER BY pi.created_at LIMIT 20000`,
 		)
-			.bind(auth.merchantId, auth.livemode ? 1 : 0, start, end)
-			.all<{ id: string; order_id: string | null; status: string; amount: number; unique_amount: number; received: number | null; created_at: number; paid_at: number | null; paid_source: string | null; late: number; amount_mismatch: number; location: string | null }>();
-		const header = ['payment_id', 'order_id', 'status', 'amount_inr', 'pay_amount_inr', 'received_inr', 'created_ist', 'paid_ist', 'source', 'late', 'amount_mismatch', 'location'];
+			.bind(auth.merchantId, auth.livemode ? 1 : 0, start, end, ...prj.args)
+			.all<{ id: string; order_id: string | null; status: string; amount: number; unique_amount: number; received: number | null; created_at: number; paid_at: number | null; paid_source: string | null; late: number; amount_mismatch: number; location: string | null; project: string | null }>();
+		const header = ['payment_id', 'order_id', 'status', 'amount_inr', 'pay_amount_inr', 'received_inr', 'created_ist', 'paid_ist', 'source', 'late', 'amount_mismatch', 'location', 'project'];
 		const lines = [header.join(',')];
 		for (const r of rows.results) {
 			lines.push(
-				[r.id, r.order_id, r.status, formatPaise(r.amount), formatPaise(r.unique_amount), r.received === null ? '' : formatPaise(r.received), istTime(r.created_at), istTime(r.paid_at), r.paid_source, r.late ? 'yes' : '', r.amount_mismatch ? 'yes' : '', r.location]
+				[r.id, r.order_id, r.status, formatPaise(r.amount), formatPaise(r.unique_amount), r.received === null ? '' : formatPaise(r.received), istTime(r.created_at), istTime(r.paid_at), r.paid_source, r.late ? 'yes' : '', r.amount_mismatch ? 'yes' : '', r.location, r.project]
 					.map(csv)
 					.join(','),
 			);

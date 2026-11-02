@@ -16,9 +16,12 @@
 		const q = new URLSearchParams();
 		if (status) q.set('status', status);
 		if (data.location) q.set('location_id', data.location);
+		if (data.project) q.set('project_id', data.project);
 		return `/?${q}`;
 	};
 	const locName = (id: string) => data.locations.find((l: { id: string }) => l.id === id)?.name ?? id;
+	const projName = (id: string | null) => (id ? (data.projects.find((p: { id: string }) => p.id === id)?.name ?? '') : '');
+	const activeProjects = $derived(data.projects.filter((p: { active: boolean }) => p.active));
 	const next = $derived.by(() => {
 		const last = data.intents.data.at(-1);
 		if (!data.intents.has_more || !last) return null;
@@ -32,13 +35,21 @@
 
 <div class="row spread">
 	<h1>Payments</h1>
-	{#if data.locations.length > 1}
+	{#if data.locations.length > 1 || data.projects.length}
 		<form method="GET" class="row">
 			{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}
-			<select name="location_id" onchange={(e) => (e.currentTarget.form as HTMLFormElement).submit()} aria-label="Counter">
-				<option value="">All counters</option>
-				{#each data.locations as l}<option value={l.id} selected={l.id === data.location}>{l.name}</option>{/each}
-			</select>
+			{#if data.projects.length}
+				<select name="project_id" onchange={(e) => (e.currentTarget.form as HTMLFormElement).submit()} aria-label="Project">
+					<option value="">All projects</option>
+					{#each data.projects as p}<option value={p.id} selected={p.id === data.project}>{p.name}</option>{/each}
+				</select>
+			{/if}
+			{#if data.locations.length > 1}
+				<select name="location_id" onchange={(e) => (e.currentTarget.form as HTMLFormElement).submit()} aria-label="Counter">
+					<option value="">All counters</option>
+					{#each data.locations as l}<option value={l.id} selected={l.id === data.location}>{l.name}</option>{/each}
+				</select>
+			{/if}
 			<noscript><button class="small">Filter</button></noscript>
 		</form>
 	{/if}
@@ -50,6 +61,9 @@
 		<input type="hidden" name="key" value={data.newKey} />
 		<label class="grow"><span>Amount (₹)</span><input name="amount" inputmode="decimal" required placeholder="250" defaultValue={form?.amount ?? ''} /></label>
 		<label class="grow"><span>Order or note (optional)</span><input name="note" maxlength="64" placeholder="Table 4" defaultValue={form?.note ?? ''} /></label>
+		{#if activeProjects.length}
+			<label><span>Project</span><select name="project_id"><option value="">None</option>{#each activeProjects as p}<option value={p.id} selected={p.id === data.project}>{p.name}</option>{/each}</select></label>
+		{/if}
 		{#if data.locations.length > 1}
 			<label><span>Counter</span><select name="location_id">{#each data.locations as l}<option value={l.id}>{l.name}</option>{/each}</select></label>
 		{/if}
@@ -76,7 +90,7 @@
 			<a class="item row spread" href="/payments/{pi.id}">
 				<div class="grow">
 					<div class="amount">{inr(pi.unique_amount)}</div>
-					<div class="small muted">{pi.order_id ?? pi.id} · {when(pi.created)}{data.locations.length > 1 ? ` · ${locName(pi.location_id)}` : ''}</div>
+					<div class="small muted">{pi.order_id ?? pi.id} · {when(pi.created)}{data.locations.length > 1 ? ` · ${locName(pi.location_id)}` : ''}{pi.project_id ? ` · ${projName(pi.project_id)}` : ''}</div>
 				</div>
 				<span class="badge b-{pi.status}">{STATUS_LABEL[pi.status]}{pi.match?.source === 'manual' ? ' (manual)' : ''}</span>
 			</a>

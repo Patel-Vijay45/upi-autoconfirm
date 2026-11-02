@@ -16,6 +16,11 @@ export interface MerchantAuth {
 	role: Role;
 	/** Set for dashboard sessions. */
 	userId: string | null;
+	/**
+	 * Set for a project's API key: it sees and creates only that project's payments, webhooks and events.
+	 * null = merchant-wide (dashboard users and merchant-wide keys).
+	 */
+	projectId: string | null;
 }
 
 /** 403 unless the caller has one of these roles. API keys pass only if 'key' is listed. */
@@ -52,6 +57,7 @@ export async function authSession(env: Env, authorization: string, mode: string 
 		settings: settingsFromJson(row.settings),
 		role: row.role,
 		userId: row.user_id,
+		projectId: null,
 	};
 }
 
@@ -76,14 +82,25 @@ export async function authKeyValue(env: Env, authorization: string, kind: 'secre
 	if ((m[2] === 'sk') !== (kind === 'secret')) throw unauthorized(kind === 'secret' ? 'a secret key (sk_) is required' : 'a publishable key (pk_) is required');
 	const hash = await sha256Hex(m[1]!);
 	const row = await env.DB.prepare(
-		`SELECT k.merchant_id, k.livemode, k.prefix, m.status, m.settings
+		`SELECT k.merchant_id, k.livemode, k.prefix, k.project_id, p.active AS project_active, m.status, m.settings
 		 FROM api_keys k JOIN merchants m ON m.id = k.merchant_id
+		 LEFT JOIN projects p ON p.id = k.project_id AND p.merchant_id = k.merchant_id
 		 WHERE k.key_hash = ? AND k.kind = ? AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at > ?)`,
 	)
 		.bind(hash, kind, Date.now())
-		.first<{ merchant_id: string; livemode: number; prefix: string; status: string; settings: string }>();
+		.first<{ merchant_id: string; livemode: number; prefix: string; project_id: string | null; project_active: number | null; status: string; settings: string }>();
 	if (!row || row.status !== 'active') throw unauthorized();
-	return { merchantId: row.merchant_id, livemode: row.livemode === 1, keyPrefix: row.prefix, settings: settingsFromJson(row.settings), role: 'key', userId: null };
+	// A paused (or missing) project's keys stop working.
+	if (row.project_id && row.project_active !== 1) throw unauthorized('this project is paused');
+	return {
+		merchantId: row.merchant_id,
+		livemode: row.livemode === 1,
+		keyPrefix: row.prefix,
+		settings: settingsFromJson(row.settings),
+		role: 'key',
+		userId: null,
+		projectId: row.project_id,
+	};
 }
 
 export interface DeviceAuth {

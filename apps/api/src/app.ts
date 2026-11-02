@@ -24,6 +24,7 @@ import { settingsFromJson } from './settings.ts';
 import { registerCheckout } from './checkout.ts';
 import { registerDashboard, requireOperator } from './dashboard.ts';
 import { alertIfCounterOffline, backOnline } from './alerts.ts';
+import { inProject, projectWhere, requireProjectScope, resolveProject, upiIdElsewhereError, upiIdUsedByAnotherMerchant } from './projects.ts';
 
 type AppEnv = { Bindings: Env; Variables: { auth: MerchantAuth } };
 type Ctx = Context<AppEnv>;
@@ -97,7 +98,7 @@ function overlay(row: IntentRow, i: Intent): IntentRow {
 async function loadIntent(c: Ctx, id: string): Promise<IntentRow> {
 	const auth = c.get('auth');
 	const row = await getIntent(c.env.DB, auth.merchantId, id);
-	if (!row || (row.livemode === 1) !== auth.livemode) throw notFound('payment intent');
+	if (!row || (row.livemode === 1) !== auth.livemode || !inProject(auth, row.project_id)) throw notFound('payment intent');
 	return row;
 }
 
@@ -155,6 +156,8 @@ const CreateIntent = z
 		description: z.string().max(140).optional(),
 		customer: z.object({ name: z.string().max(80).optional(), phone: z.string().max(20).optional() }).strict().optional(),
 		expires_in: z.number().int().min(120).max(3 * 3600).optional(),
+		/** Which of the merchant's projects this payment is for. A project's key always uses its own project. */
+		project_id: z.string().max(64).optional(),
 		return_url: z.url({ protocol: /^https?$/ }).max(500).optional(),
 		metadata: z
 			.record(z.string().max(40), z.string().max(500))
@@ -166,6 +169,7 @@ const CreateIntent = z
 const ListQuery = z.object({
 	status: z.enum(['pending', 'paid', 'expired', 'cancelled']).optional(),
 	location_id: z.string().max(64).optional(),
+	project_id: z.string().max(64).optional(),
 	created_after: z.iso.datetime().optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	starting_after: z.string().max(64).optional(),
@@ -197,6 +201,8 @@ const CreateEndpoint = z
 	.object({
 		url: z.url({ protocol: /^https$/ }).max(500),
 		events: z.array(z.enum([...EVENT_TYPES, '*'])).min(1).max(EVENT_TYPES.length + 1),
+		/** Only this project's payment events (plus phone online/offline). Omit for every event of the merchant. */
+		project_id: z.string().max(64).optional(),
 	})
 	.strict();
 
@@ -275,7 +281,9 @@ registerCheckout(app);
 // Merchant (secret key) routes: everything under /v1 except /v1/public.
 app.use('/v1/*', async (c, next) => {
 	if (c.req.path.startsWith('/v1/public/') || c.req.path === '/v1/checkout.js') return next();
-	c.set('auth', await authMerchant(c));
+	const auth = await authMerchant(c);
+	requireProjectScope(auth, c.req.method, c.req.path);
+	c.set('auth', auth);
 	return next();
 });
 
@@ -294,6 +302,7 @@ app.post('/v1/locations', async (c) => {
 		.bind(auth.merchantId, body.upi_vpa)
 		.first<{ id: string }>();
 	if (taken) throw new ApiError(409, 'conflict', 'upi_id_in_use', 'a counter already uses this UPI ID; add another phone to that counter instead', 'upi_vpa');
+	if (await upiIdUsedByAnotherMerchant(c.env, auth.merchantId, body.upi_vpa)) throw upiIdElsewhereError();
 	const id = randomId('loc');
 	const now = Date.now();
 	await c.env.DB.prepare('INSERT INTO locations (id, merchant_id, name, upi_vpa, upi_payee_name, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
@@ -335,8 +344,10 @@ app.post('/v1/payment_intents', async (c) => {
 	const raw = await readBody(c);
 	const body = parseJson(raw, CreateIntent);
 	const keyHeader = c.req.header('idempotency-key');
-	const idemKey = keyHeader === undefined ? null : IdemKey.safeParse(keyHeader).success ? keyHeader : null;
-	if (keyHeader !== undefined && idemKey === null) throw new ApiError(400, 'invalid_request', 'invalid_idempotency_key', 'Idempotency-Key must be 1-64 printable characters');
+	const validKey = keyHeader === undefined ? null : IdemKey.safeParse(keyHeader).success ? keyHeader : null;
+	if (keyHeader !== undefined && validKey === null) throw new ApiError(400, 'invalid_request', 'invalid_idempotency_key', 'Idempotency-Key must be 1-64 printable characters');
+	// Each project's keys have their own idempotency keys: two websites may both send "order-1".
+	const idemKey = validKey && auth.projectId ? `${auth.projectId}/${validKey}` : validKey;
 	const now = Date.now();
 	const requestHash = await sha256Hex(`POST /v1/payment_intents\n${auth.livemode}\n${raw}`);
 
@@ -365,6 +376,7 @@ app.post('/v1/payment_intents', async (c) => {
 		.bind(auth.merchantId, loc.id, auth.livemode ? 1 : 0)
 		.first();
 	if (!device) throw new ApiError(422, 'invalid_request', 'location_not_ready', 'no phone is paired with this location', 'location_id');
+	const projectId = await resolveProject(c.env, auth, body.project_id);
 
 	const extras: NewIntentExtras = {
 		merchantId: auth.merchantId,
@@ -383,6 +395,7 @@ app.post('/v1/payment_intents', async (c) => {
 			id,
 			amount: body.amount,
 			orderId: body.order_id ?? null,
+			projectId,
 			ttlMs: body.expires_in !== undefined ? body.expires_in * 1000 : undefined,
 			extras,
 		}),
@@ -414,6 +427,8 @@ app.get('/v1/payment_intents', async (c) => {
 	const args: unknown[] = [auth.merchantId, auth.livemode ? 1 : 0];
 	if (q.data.status) (where.push('status = ?'), args.push(q.data.status));
 	if (q.data.location_id) (where.push('location_id = ?'), args.push(q.data.location_id));
+	const pw = projectWhere(auth, q.data.project_id);
+	if (pw.args.length) (where.push('project_id = ?'), args.push(...pw.args));
 	if (q.data.created_after) (where.push('created_at > ?'), args.push(Date.parse(q.data.created_after)));
 	if (q.data.starting_after) {
 		const cur = await getIntent(c.env.DB, auth.merchantId, q.data.starting_after);
@@ -452,6 +467,8 @@ app.post('/v1/payment_intents/:id/mark_paid', async (c) => {
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), Note);
 	const row = await loadIntent(c, c.req.param('id'));
+	// Unmatched money belongs to the whole shop; only the dashboard or a shop-wide key may assign it.
+	if (body.signal_id && auth.projectId) throw new ApiError(403, 'permission', 'project_key_scope', "a project's API key can't assign inbox payments", 'signal_id');
 	if (body.signal_id) {
 		const sig = await loadSignal(c, body.signal_id);
 		if (sig.location_id !== row.location_id) throw new ApiError(400, 'invalid_request', 'location_mismatch', 'signal and intent are at different locations', 'signal_id');
@@ -545,24 +562,26 @@ app.post('/v1/webhook_endpoints', async (c) => {
 	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'developer');
 	const auth = c.get('auth');
 	const body = parseJson(await readBody(c), CreateEndpoint);
+	const projectId = await resolveProject(c.env, auth, body.project_id);
 	const id = randomId('we');
 	const secret = `whsec_${randomSecret()}`;
 	const now = Date.now();
-	await c.env.DB.prepare('INSERT INTO webhook_endpoints (id, merchant_id, livemode, url, events, secret_enc, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)')
-		.bind(id, auth.merchantId, auth.livemode ? 1 : 0, body.url, JSON.stringify(body.events), await encryptSecret(c.env.WEBHOOK_KEY, secret), now)
+	await c.env.DB.prepare('INSERT INTO webhook_endpoints (id, merchant_id, livemode, url, events, secret_enc, enabled, created_at, project_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)')
+		.bind(id, auth.merchantId, auth.livemode ? 1 : 0, body.url, JSON.stringify(body.events), await encryptSecret(c.env.WEBHOOK_KEY, secret), now, projectId)
 		.run();
-	return c.json({ id, object: 'webhook_endpoint', url: body.url, events: body.events, enabled: true, livemode: auth.livemode, secret, created: iso(now) }, 201);
+	return c.json({ id, object: 'webhook_endpoint', url: body.url, events: body.events, project_id: projectId, enabled: true, livemode: auth.livemode, secret, created: iso(now) }, 201);
 });
 
 app.get('/v1/webhook_endpoints', async (c) => {
 	requireRole(c.get('auth'), 'key', 'owner', 'admin', 'developer');
 	const auth = c.get('auth');
-	const rows = await c.env.DB.prepare('SELECT id, url, events, enabled, created_at FROM webhook_endpoints WHERE merchant_id = ? AND livemode = ? ORDER BY created_at')
-		.bind(auth.merchantId, auth.livemode ? 1 : 0)
-		.all<{ id: string; url: string; events: string; enabled: number; created_at: number }>();
+	const pw = projectWhere(auth, undefined);
+	const rows = await c.env.DB.prepare(`SELECT id, url, events, enabled, created_at, project_id FROM webhook_endpoints WHERE merchant_id = ? AND livemode = ?${pw.sql} ORDER BY created_at`)
+		.bind(auth.merchantId, auth.livemode ? 1 : 0, ...pw.args)
+		.all<{ id: string; url: string; events: string; enabled: number; created_at: number; project_id: string | null }>();
 	return c.json({
 		object: 'list',
-		data: rows.results.map((r) => ({ id: r.id, object: 'webhook_endpoint', url: r.url, events: JSON.parse(r.events) as string[], enabled: r.enabled === 1, created: iso(r.created_at) })),
+		data: rows.results.map((r) => ({ id: r.id, object: 'webhook_endpoint', url: r.url, events: JSON.parse(r.events) as string[], project_id: r.project_id, enabled: r.enabled === 1, created: iso(r.created_at) })),
 	});
 });
 
@@ -571,7 +590,7 @@ app.get('/v1/webhook_endpoints', async (c) => {
 async function loadPublicIntent<E extends { Bindings: Env }>(c: Context<E>, id: string) {
 	const auth = await authKey(c, 'publishable');
 	const row = await getIntent(c.env.DB, auth.merchantId, id);
-	if (!row || (row.livemode === 1) !== auth.livemode) throw notFound('payment intent');
+	if (!row || (row.livemode === 1) !== auth.livemode || !inProject(auth, row.project_id)) throw notFound('payment intent');
 	return { auth, row };
 }
 

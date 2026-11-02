@@ -164,7 +164,7 @@ Statuses in **Needs a look**:
 Never hand over goods based on a customer's screenshot. Wait for **✓ Paid**, or check the phone/soundbox yourself.
 
 ### Reports
-**Reports** → pick dates → daily totals (Indian time), how many were confirmed automatically, what's still in the inbox, and walk-in payments (Other payments) counted separately. **Download CSV** for your accountant. "Received" includes the identifying paise; it should match your bank statement.
+**Reports** → pick dates (and a project, if you have several) → daily totals (Indian time), how many were confirmed automatically, what's still in the inbox, and walk-in payments (Other payments) counted separately. **Download CSV** for your accountant. "Received" includes the identifying paise; it should match your bank statement.
 
 ### Settings (owner/admin)
 - **Auto-confirm limit (₹)**: payments above it need one staff tap in the inbox. Recommended for expensive items.
@@ -179,6 +179,7 @@ Never hand over goods based on a customer's screenshot. Wait for **✓ Paid**, o
 
 For developers. Full guide: [INTEGRATION.md](INTEGRATION.md); API reference: [API.md](API.md).
 
+0. **Several websites on one UPI ID?** Add each one under **Developers → Projects** first, then pick the project when you create its keys and webhook. Each website then only sees its own payments; the counter phone and UPI ID are shared. Don't make a second shop account for the same UPI ID (it's refused).
 1. **Keys:** dashboard → **Developers → Create key**. A **secret key** (`sk_live_…`) is for your server only; a **publishable key** (`pk_live_…`) is for the browser widget. Use `sk_test_`/`pk_test_` while building.
 2. **Create a payment** from your server when the customer checks out:
    ```bash

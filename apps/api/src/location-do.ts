@@ -124,7 +124,7 @@ export class LocationDO extends DurableObject<Env> {
 
 	async createIntent(
 		lc: LocationCtx,
-		input: { id: string; amount: number; orderId: string | null; ttlMs?: number; extras: NewIntentExtras },
+		input: { id: string; amount: number; orderId: string | null; projectId?: string | null; ttlMs?: number; extras: NewIntentExtras },
 	): Promise<Result<{ intent: Intent | null; existingId: string | null }>> {
 		await this.prepare(lc);
 		const now = Date.now();
@@ -133,7 +133,7 @@ export class LocationDO extends DurableObject<Env> {
 			const prev = await this.ctx.storage.get<{ id: string; expiresAt: number }>(`k:${key}`);
 			if (prev && prev.expiresAt > now) return { ok: true, value: { intent: this.engine.getIntent(prev.id) ?? null, existingId: prev.id } };
 		}
-		const r = this.run(() => this.engine.createIntent({ id: input.id, amount: input.amount, orderId: input.orderId, ttlMs: input.ttlMs }, now));
+		const r = this.run(() => this.engine.createIntent({ id: input.id, amount: input.amount, orderId: input.orderId, projectId: input.projectId ?? null, ttlMs: input.ttlMs }, now));
 		if (!r.ok) return r;
 		const extraPut: Record<string, unknown> = {};
 		if (key) {
@@ -349,21 +349,25 @@ export class LocationDO extends DurableObject<Env> {
 		const meta = this.meta!;
 		let object: unknown;
 		let objectId: string;
+		let projectId: string | null = null;
 		if ('intentId' in e && e.type.startsWith('payment_intent.')) {
 			const i = this.engine.getIntent(e.intentId);
 			if (!i) return null;
 			const matched = i.matchedSignalId ? this.engine.getSignal(i.matchedSignalId) : null;
 			object = webhookIntentObject(i, meta.locationId, meta.livemode, matched);
 			objectId = i.id;
+			projectId = i.projectId ?? null;
 		} else {
 			const sig = this.engine.getSignal((e as { signalId: string }).signalId);
 			if (!sig) return null;
 			object = webhookSignalObject(sig, meta.locationId, 'reason' in e ? e.reason : undefined);
 			objectId = sig.id;
+			// A signal waiting for review belongs to its suggested order's project; unmatched money is merchant-wide.
+			if (sig.intentId) projectId = this.engine.getIntent(sig.intentId)?.projectId ?? null;
 		}
 		const id = randomId('evt');
 		const payload = JSON.stringify({ id, object: 'event', type: e.type, created: iso(now), livemode: meta.livemode, data: { object } });
-		return { id, merchantId: meta.merchantId, livemode: meta.livemode, type: e.type, objectId, payload, createdAt: now };
+		return { id, merchantId: meta.merchantId, livemode: meta.livemode, type: e.type, objectId, payload, createdAt: now, projectId };
 	}
 
 	/** Persist engine changes + an outbox entry atomically, then try to flush to D1 / the queue. */

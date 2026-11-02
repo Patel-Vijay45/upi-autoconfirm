@@ -9,14 +9,16 @@ const STATUSES = ['pending', 'paid', 'expired', 'cancelled'];
 export const load: PageServerLoad = async (event) => {
 	const status = event.url.searchParams.get('status') ?? '';
 	const location = event.url.searchParams.get('location_id') ?? '';
+	const project = event.url.searchParams.get('project_id') ?? '';
 	const after = event.url.searchParams.get('starting_after') ?? '';
 	const q = new URLSearchParams({ limit: '25' });
 	if (STATUSES.includes(status)) q.set('status', status);
 	if (location) q.set('location_id', location);
+	if (project) q.set('project_id', project);
 	if (after) q.set('starting_after', after);
-	const [intents, locations] = await Promise.all([get(event, `/v1/payment_intents?${q}`), get(event, '/v1/locations')]);
+	const [intents, locations, projects] = await Promise.all([get(event, `/v1/payment_intents?${q}`), get(event, '/v1/locations'), get(event, '/v1/projects')]);
 	// A fresh Idempotency-Key per form render: a double tap can't create two payments.
-	return { intents, locations: locations.data, status, location, newKey: crypto.randomUUID() };
+	return { intents, locations: locations.data, projects: projects.data as { id: string; name: string; active: boolean }[], status, location, project, newKey: crypto.randomUUID() };
 };
 
 export const actions: Actions = {
@@ -28,6 +30,7 @@ export const actions: Actions = {
 		const body: Record<string, unknown> = { amount };
 		if (f.note?.trim()) body.order_id = f.note.trim().slice(0, 64);
 		if (f.location_id) body.location_id = f.location_id;
+		if (f.project_id) body.project_id = f.project_id;
 		const res = await apiRaw(event, 'POST', '/v1/payment_intents', body, { 'idempotency-key': `dash-${f.key ?? crypto.randomUUID()}` });
 		const json = (await res.json().catch(() => ({}))) as any;
 		if (!res.ok) return fail(res.status >= 400 && res.status < 500 ? res.status : 400, { error: json?.error?.message ?? 'Could not create the payment.', amount: f.amount ?? '', note: f.note ?? '' });

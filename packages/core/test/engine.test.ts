@@ -471,3 +471,19 @@ describe('walk-in filter', () => {
 		expect(back.snapshot().signals[0]!.walkIn).toBe(false);
 	});
 });
+
+describe('projects', () => {
+	it('carries the project along; amounts stay unique across projects at one counter', () => {
+		const e = engine({ maxOffset: 2 });
+		const a = e.createIntent({ id: 'pi_a', amount: 10_000, projectId: 'prj_shop' }, T0).intent;
+		const b = e.createIntent({ id: 'pi_b', amount: 10_000, projectId: 'prj_cafe' }, T0).intent;
+		expect(a.projectId).toBe('prj_shop');
+		expect(b.projectId).toBe('prj_cafe');
+		expect(a.uniqueAmount).not.toBe(b.uniqueAmount); // one UPI ID: one pool of amounts for all projects
+		expect(code(() => e.createIntent({ id: 'pi_c', amount: 10_000, projectId: 'prj_other' }, T0))).toBe('slots_exhausted');
+		expect(e.createIntent({ id: 'pi_d', amount: 20_000 }, T0).intent.projectId).toBeNull();
+		const snap = e.snapshot();
+		for (const i of snap.intents) delete (i as { projectId?: string | null }).projectId;
+		expect(new LocationEngine(DEFAULT_SETTINGS, pick(), snap).getIntent('pi_a')!.projectId).toBeNull();
+	});
+});

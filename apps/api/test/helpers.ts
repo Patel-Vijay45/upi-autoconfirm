@@ -52,8 +52,14 @@ export interface Device {
 	locationId: string;
 }
 
-/** A counter. Each counter of a merchant needs its own UPI ID; the first one is shop@ybl. */
-export async function newLocation(sk: string, name = 'Counter 1', vpa = name === 'Counter 1' ? 'shop@ybl' : `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@ybl`): Promise<string> {
+let vpaSeq = 0;
+/** A unique UPI ID: one UPI ID belongs to one merchant (and one counter), across all test merchants. */
+export function uniqueVpa(base = 'shop'): string {
+	return `${base}${Date.now().toString(36)}${++vpaSeq}@ybl`;
+}
+
+/** A counter with its own UPI ID (shop…@ybl). */
+export async function newLocation(sk: string, name = 'Counter 1', vpa = uniqueVpa(name === 'Counter 1' ? 'shop' : name.toLowerCase().replace(/[^a-z0-9]/g, ''))): Promise<string> {
 	const r = await call('POST', '/v1/locations', { key: sk, body: { name, upi_vpa: vpa, upi_payee_name: 'My Shop' } });
 	if (r.status !== 201) throw new Error(`location create failed: ${JSON.stringify(r.json)}`);
 	return r.json.id;

@@ -279,3 +279,21 @@ CREATE TABLE push_subscriptions (
 	last_sent_at INTEGER
 );
 CREATE INDEX push_subscriptions_merchant ON push_subscriptions(merchant_id);
+
+-- Projects inside a merchant (0004): one UPI ID, several websites/apps, each with its own keys and webhooks.
+-- Also added in 0004: project_id on api_keys, payment_intents, webhook_endpoints and events (NULL = merchant-wide).
+CREATE TABLE projects (
+	id TEXT PRIMARY KEY,                       -- prj_xxx
+	merchant_id TEXT NOT NULL REFERENCES merchants(id),
+	name TEXT NOT NULL,
+	active INTEGER NOT NULL DEFAULT 1,
+	created_at INTEGER NOT NULL
+);
+CREATE INDEX projects_merchant ON projects(merchant_id);
+ALTER TABLE api_keys ADD COLUMN project_id TEXT;
+ALTER TABLE payment_intents ADD COLUMN project_id TEXT;
+ALTER TABLE webhook_endpoints ADD COLUMN project_id TEXT;
+ALTER TABLE events ADD COLUMN project_id TEXT;
+CREATE INDEX payment_intents_project ON payment_intents(merchant_id, project_id, created_at);
+CREATE INDEX locations_vpa ON locations(upi_vpa COLLATE NOCASE);
+

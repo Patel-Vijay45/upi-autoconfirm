@@ -12,6 +12,7 @@ AutoConfirm is a **standalone, reusable service**. Any number of projects (onlin
   - Still to do: Play developer account; upload key + GitHub secrets; `SUPPORT_EMAIL` / `OPERATOR_NAME` / `PRIVACY_POLICY_URL` variables.
   - Then: Deploy → Android release → Play Console → internal test → closed test (12 testers × 14 days) → production.
   - Until then, shops install the APK directly (USER-MANUAL D2).
+- ✅ Projects: several websites/apps on one UPI ID, each with its own keys and webhooks; a UPI ID belongs to one shop account.
 - ▶ **Next:** pilot on a real project (Step 5 features as needed).
 
 ## Step 1: Core service (API + matching engine) ✅ built

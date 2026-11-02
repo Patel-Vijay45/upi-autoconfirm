@@ -15,6 +15,7 @@ interface EndpointRow {
 	url: string;
 	events: string;
 	secret_enc: string;
+	project_id: string | null;
 }
 
 function subscribed(eventsJson: string, type: string): boolean {
@@ -39,9 +40,9 @@ export async function handleWebhookBatch(batch: MessageBatch<WebhookMessage>, en
 
 async function handleOne(msg: Message<WebhookMessage>, env: Env): Promise<void> {
 	const { eventId, merchantId, endpointId, pushId } = msg.body;
-	const event = await env.DB.prepare('SELECT type, livemode, payload FROM events WHERE id = ? AND merchant_id = ?')
+	const event = await env.DB.prepare('SELECT type, livemode, payload, project_id FROM events WHERE id = ? AND merchant_id = ?')
 		.bind(eventId, merchantId)
-		.first<{ type: string; livemode: number; payload: string }>();
+		.first<{ type: string; livemode: number; payload: string; project_id: string | null }>();
 	if (!event) {
 		msg.ack();
 		return;
@@ -51,8 +52,13 @@ async function handleOne(msg: Message<WebhookMessage>, env: Env): Promise<void> 
 
 	// Fan out: one message per subscribed endpoint (and per push-alert browser), so each retries on its own.
 	if (!endpointId) {
-		const eps = await env.DB.prepare('SELECT id, events FROM webhook_endpoints WHERE merchant_id = ? AND livemode = ? AND enabled = 1')
-			.bind(merchantId, event.livemode)
+		// Merchant-wide endpoints get everything. A project's endpoint gets that project's events, plus phone
+		// online/offline (the phone is shared by all projects); never another project's payments or the shop inbox.
+		const eps = await env.DB.prepare(
+			`SELECT id, events FROM webhook_endpoints WHERE merchant_id = ? AND livemode = ? AND enabled = 1
+			 AND (project_id IS NULL OR project_id = ? OR ? LIKE 'device.%')`,
+		)
+			.bind(merchantId, event.livemode, event.project_id ?? '', event.type)
 			.all<{ id: string; events: string }>();
 		const targets = eps.results.filter((e) => subscribed(e.events, event.type));
 		const messages: { body: WebhookMessage }[] = targets.map((t) => ({ body: { eventId, merchantId, endpointId: t.id } }));
@@ -69,10 +75,11 @@ async function handleOne(msg: Message<WebhookMessage>, env: Env): Promise<void> 
 		return;
 	}
 
-	const ep = await env.DB.prepare('SELECT id, url, events, secret_enc FROM webhook_endpoints WHERE id = ? AND merchant_id = ? AND enabled = 1')
+	const ep = await env.DB.prepare('SELECT id, url, events, secret_enc, project_id FROM webhook_endpoints WHERE id = ? AND merchant_id = ? AND enabled = 1')
 		.bind(endpointId, merchantId)
 		.first<EndpointRow>();
-	if (!ep) {
+	// Never deliver another project's events to a project's endpoint (also checked at fan-out).
+	if (!ep || (ep.project_id && ep.project_id !== event.project_id && !event.type.startsWith('device.'))) {
 		msg.ack();
 		return;
 	}

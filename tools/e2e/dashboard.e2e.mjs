@@ -127,11 +127,12 @@ async function main() {
 	// ----- add a counter and pair a phone -----
 	await p.goto(`${DASH}/locations`);
 	await p.fill('input[name=name]', 'Counter 1');
-	await p.fill('input[name=upi_vpa]', 'sharmastore@ybl');
+	const vpa = `sharmastore${n}@ybl`; // one UPI ID belongs to one shop account, so each run uses a new one
+	await p.fill('input[name=upi_vpa]', vpa);
 	await p.fill('input[name=upi_payee_name]', 'Sharma General Store');
 	await p.click('button:has-text("Add counter")');
 	await p.getByText('Counter added').waitFor();
-	ok(await p.getByText('sharmastore@ybl').isVisible(), 'locations: counter added');
+	ok(await p.getByText(vpa).isVisible(), 'locations: counter added');
 	await p.click('a:has-text("Add phone")');
 	await p.click('button:has-text("Create pairing code")');
 	await p.getByTestId('pairing-qr').waitFor();
@@ -213,6 +214,24 @@ async function main() {
 	ok(check.status === 200, 'developers: the new key works');
 	await p.goto(`${DASH}/developers`);
 	ok((await p.getByTestId('new-key').count()) === 0 && !(await p.content()).includes(key), 'developers: key not shown again');
+
+	// ----- projects: a second website on the same UPI ID gets its own key -----
+	await p.fill('form[action="?/addProject"] input[name=name]', 'Online store');
+	await p.click('button:has-text("Add project")');
+	await p.getByText('Project "Online store" added').waitFor();
+	ok((await p.getByTestId('project').filter({ hasText: 'Online store' }).count()) === 1, 'projects: project added');
+	await p.selectOption('form[action="?/createKey"] select[name=project_id]', { label: 'Online store' });
+	await p.click('button:has-text("Create key")');
+	const projectKey = (await p.getByTestId('new-key').textContent()).trim();
+	const web = await (await fetch(`${API}/v1/payment_intents`, { method: 'POST', headers: { authorization: `Bearer ${projectKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ amount: 25000, order_id: 'WEB-1' }) })).json();
+	ok(/^prj_/.test(web.project_id ?? ''), "projects: the project's key puts payments in its project");
+	const others = await (await fetch(`${API}/v1/payment_intents`, { headers: { authorization: `Bearer ${projectKey}` } })).json();
+	ok(others.data.length === 1 && others.data[0].id === web.id, "projects: the project's key sees only its own payments");
+	await p.goto(`${DASH}/`, { waitUntil: 'networkidle' }); // the filter submits on change once the page is running
+	await p.selectOption('form[method="GET"] select[name=project_id]', { label: 'Online store' });
+	await p.waitForURL(/project_id=prj_/);
+	const rows = p.locator('a.item');
+	ok((await rows.count()) === 1 && (await rows.first().textContent()).includes('WEB-1 ') && (await rows.first().textContent()).includes('Online store'), 'payments: filtered by project');
 
 	// ----- locations: a phone that unpairs itself shows "Removed" without a reload -----
 	await p.goto(`${DASH}/locations`);

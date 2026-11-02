@@ -37,7 +37,7 @@ describe('hosted checkout page', () => {
 		expect(html).toContain(`₹${pi.display_amount}`);
 		expect(html).toContain(`+${pi.unique_amount - pi.amount} paise`);
 		expect(html).toContain('Pay My Shop');
-		expect(html).toContain(`href="gpay://upi/pay?pa=shop@ybl&amp;pn=My%20Shop&amp;am=${pi.display_amount}`);
+		expect(html).toMatch(new RegExp(`href="gpay://upi/pay\\?pa=shop[a-z0-9]+@ybl&amp;pn=My%20Shop&amp;am=${pi.display_amount.replace('.', '\\.')}`));
 		expect(html).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
 		expect(html).not.toContain('Ramesh');
 		expect(html).not.toContain('9800000000');

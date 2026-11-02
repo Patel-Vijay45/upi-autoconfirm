@@ -11,6 +11,7 @@ UPI notifications reliably contain the **amount**. They often **don't** contain 
   - `offset ∈ [1, 99]` paise, so the customer pays at most 99 paise extra.
   - `unique_amount = amount + offset`, e.g. `93007`.
   - Random, not lowest, so the same amount isn't handed out again and again. A late or repeated payment for an old order is then unlikely to land on a new order.
+- Amounts are per location (one UPI ID), shared by all of the merchant's projects, so two websites on one UPI ID never get the same amount. A UPI ID belongs to only one merchant.
 - The pair (location, unique_amount) is **reserved** while the intent is open, and then for a **cool-down** after it closes:
   - Paid or cancelled: reserved until `closed_at + reuse_cooldown`.
   - Expired: reserved until `expires_at + grace_window + reuse_cooldown`.

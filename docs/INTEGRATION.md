@@ -7,7 +7,8 @@ Five steps, about 1–2 hours for a developer.
 2. **Add phone:** install the AutoConfirm app on the counter phone, scan the pairing QR, and complete the checklist.
 3. Do a **₹1 test payment**: Payments → **+ New payment** → 1 → pay the exact amount from another phone. The page turns **✓ Paid**.
 4. **Developers → API keys:** copy `sk_test_…` (server) and `pk_test_…` (browser).
-5. **Developers → Webhooks:** add `https://yoursite.com/webhooks/autoconfirm` and copy the signing secret.
+   - **Several websites on one UPI ID?** (a store, a café, bookings) First **Developers → Projects → Add project** for each website, then create each website's keys with that project selected. Each site then sees and receives only its own payments. Don't create a second shop account for the same UPI ID: the API refuses it, because both would hand out the same amounts.
+5. **Developers → Webhooks:** add `https://yoursite.com/webhooks/autoconfirm` (choose the project if you use projects) and copy the signing secret.
 
 ## 1. Server: create a payment when the customer checks out
 Never put the `sk_` key in the browser. In JavaScript/TypeScript servers, the `@autoconfirm/node` client (`packages/node`) does this and the webhook check for you:

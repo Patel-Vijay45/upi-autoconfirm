@@ -207,6 +207,7 @@ Tests: `test/engine.test.ts` (scenarios), `test/engine.property.test.ts` (random
 |---|---|
 | `index.ts` | Worker entry: `fetch` = Hono app, `queue` = webhook + push consumer, `scheduled` = 5-minute phone-offline check; exports `LocationDO`, `PasswordDO`. |
 | `alerts.ts` | Phone-offline alerts: `checkOfflinePhones` (cron), `markOffline` (one `device.offline` per outage), `backOnline` (from the heartbeat), `alertIfCounterOffline` (payment created / "I have paid" at a counter with no online phone). |
+| `projects.ts` | Projects: what a project key may call (`requireProjectScope`), row checks (`inProject`, `projectWhere`), `resolveProject`, and the one-UPI-ID-per-merchant check. |
 | `retention.ts` | Daily data clean-up (03:45 IST, from the 5-minute cron): blanks old payer/customer details, deletes old logs. Must match the privacy page. |
 | `push.ts` | Push alerts: which events alert (`wantsPush`; never walk-ins), the alert text (`noticeFor`), `sendPush` (encrypt + VAPID + POST). |
 | `app.ts` | Most routes: locations, pairing codes, payment intents, signals inbox, webhook endpoints, public status/claim, device API, `/admin/v1/merchants`. Also the `/v1/*` auth middleware and helpers (`parseJson`, `loadIntent`, `overlay`, `shortPayer`). |

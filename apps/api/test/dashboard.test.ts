@@ -216,7 +216,7 @@ describe('dashboard features', () => {
 		const res = await (await import('../src/app.ts')).app.request('/v1/reports/payments.csv', { headers: { authorization: `Bearer ${keys.sk}` } }, env);
 		expect(res.headers.get('content-type')).toContain('text/csv');
 		const text = await res.text();
-		expect(text.split('\r\n')[0]).toBe('payment_id,order_id,status,amount_inr,pay_amount_inr,received_inr,created_ist,paid_ist,source,late,amount_mismatch,location');
+		expect(text.split('\r\n')[0]).toBe('payment_id,order_id,status,amount_inr,pay_amount_inr,received_inr,created_ist,paid_ist,source,late,amount_mismatch,location,project');
 		expect(text).toContain(`${p1.id},"'=HYPERLINK(""x"")",paid,930.00,${p1.display_amount},${p1.display_amount}`);
 		expect((await call('GET', '/v1/reports/summary?from=2026-01-01&to=2026-12-31', { key: keys.sk })).json.error.code).toBe('range_too_large');
 	});

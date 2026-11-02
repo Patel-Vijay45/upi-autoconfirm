@@ -10,13 +10,22 @@
 <form method="GET" class="row card">
 	<label><span>From</span><input type="date" name="from" defaultValue={r.from} /></label>
 	<label><span>To</span><input type="date" name="to" defaultValue={r.to} /></label>
+	{#if data.projects.length}
+		<label><span>Project</span>
+			<select name="project_id">
+				<option value="">All projects</option>
+				{#each data.projects as p}<option value={p.id} selected={p.id === data.project}>{p.name}</option>{/each}
+			</select>
+		</label>
+	{/if}
 	<button class="small">Show</button>
-	<a class="btn ghost small" href="/reports/payments.csv?from={r.from}&to={r.to}" download>Download CSV</a>
+	<a class="btn ghost small" href="/reports/payments.csv?from={r.from}&to={r.to}{data.project ? `&project_id=${data.project}` : ''}" download>Download CSV</a>
 </form>
 
 <div class="row">
 	<div class="card grow"><div class="muted small">Received</div><div class="amount big" data-testid="total-received">{inr(r.total.received)}</div></div>
 	<div class="card grow"><div class="muted small">Paid orders</div><div class="amount big">{r.total.paid_count}</div><div class="small muted">{r.total.auto_count} confirmed automatically</div></div>
+	{#if data.project}<p class="small muted" style="flex-basis:100%">Paid orders and Received are for this project. The inbox and walk-ins belong to the whole shop (one UPI ID).</p>{/if}
 	<div class="card grow"><div class="muted small">Still in inbox</div><div class="amount big">{r.total.open_inbox}</div></div>
 	<div class="card grow" data-testid="walk-in-total"><div class="muted small">Other payments (walk-ins)</div><div class="amount big">{inr(r.total.walk_in_received)}</div><div class="small muted">{r.total.walk_in_count} payments</div></div>
 </div>
