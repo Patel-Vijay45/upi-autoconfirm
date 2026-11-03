@@ -81,6 +81,7 @@ components:
         currency: { type: string, const: INR }
         location_id: { type: string }
         order_id: { type: string, maxLength: 64 }
+        project_id: { type: [string, 'null'], description: 'Project (website/app) of the merchant this payment belongs to' }
         description: { type: string, maxLength: 140 }
         customer:
           type: object
@@ -167,6 +168,7 @@ paths:
                 amount: { type: integer, minimum: 100, maximum: 10000000 }
                 location_id: { type: string }
                 order_id: { type: string, maxLength: 64 }
+                project_id: { type: string, description: "Project (website/app) this payment is for. Only with a merchant-wide key; a project's key uses its own project." }
                 description: { type: string, maxLength: 140 }
                 customer:
                   type: object
@@ -244,6 +246,31 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
         '409': { description: amount_in_use / undo_window_passed / invalid_state, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /projects:
+    get:
+      summary: List projects (several websites/apps on one UPI ID)
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Add a project. Its API keys are created in the dashboard (POST /v1/api_keys with project_id).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 60 } } }
+      responses:
+        '201': { description: Created }
+  /projects/{id}:
+    post:
+      summary: Rename, pause or resume a project (a paused project's keys stop working)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, active: { type: boolean } } }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /locations:
     post:
       summary: Add a location (one UPI ID, with its own phones)
@@ -260,7 +287,7 @@ paths:
                 upi_payee_name: { type: string, maxLength: 60 }
       responses:
         '201': { description: Created }
-        '409': { description: upi_id_in_use (another active location already uses this UPI ID), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'upi_id_in_use (another counter of this merchant uses this UPI ID) or upi_id_in_use_elsewhere (another merchant uses it; use projects instead)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     get:
       summary: List locations
       responses:
@@ -328,6 +355,7 @@ paths:
               properties:
                 url: { type: string, format: uri }
                 events: { type: array, items: { type: string } }
+                project_id: { type: string, description: "Only this project's payment events plus phone online/offline. A project's key always uses its own project." }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/WebhookEndpoint' } } } }
     get:

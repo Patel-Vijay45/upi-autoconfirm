@@ -4,6 +4,12 @@ AutoConfirm is generic. The same API, webhooks and checkout page serve every kin
 
 Rule for every use case: **the customer only pays the amount shown.** No typing a UTR, no screenshots, no extra steps.
 
+## 0. Several projects on one UPI ID
+Most owners have one UPI ID and several websites or apps (a shop, a café, bookings). Use **one shop account** with one **project** per website (Developers → Projects):
+- One UPI ID and one counter phone serve all of them; unique amounts never clash across projects.
+- Each website gets its own API keys and webhook, and sees only its own payments. Reports and the payments list can be filtered by project.
+- A second shop account can't use the same UPI ID (the API refuses it): two accounts would hand out the same amounts and one payment could mark orders paid in both.
+
 ## 1. Online shop (website or app)
 - The site creates a payment intent when the customer checks out, then shows the hosted checkout page or the `checkout.js` widget.
 - The site fulfils the order on the `payment_intent.paid` webhook, after re-checking with `GET /v1/payment_intents/:id`.

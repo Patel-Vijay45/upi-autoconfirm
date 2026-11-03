@@ -72,6 +72,8 @@ export interface Intent {
 	amount: number;
 	uniqueAmount: number;
 	orderId: string | null;
+	/** The merchant's project (website/app) this payment belongs to. Carried along only; matching ignores it. */
+	projectId: string | null;
 	createdAt: number;
 	expiresAt: number;
 	paidAt: number | null;
@@ -157,6 +159,7 @@ export interface CreateIntentInput {
 	id: string;
 	amount: number;
 	orderId?: string | null;
+	projectId?: string | null;
 	ttlMs?: number;
 }
 
@@ -224,7 +227,7 @@ export class LocationEngine {
 		private readonly rand: (maxExclusive: number) => number = randomInt,
 		state?: EngineState,
 	) {
-		for (const i of state?.intents ?? []) this.intents.set(i.id, { ...i });
+		for (const i of state?.intents ?? []) this.intents.set(i.id, { ...i, projectId: i.projectId ?? null }); // older snapshots: no projectId
 		for (const s of state?.signals ?? []) {
 			this.signals.set(s.id, { ...s, walkIn: s.walkIn ?? false }); // older snapshots have no walkIn
 			this.fingerprints.set(s.fingerprint, s.id);
@@ -311,6 +314,7 @@ export class LocationEngine {
 			amount: input.amount,
 			uniqueAmount,
 			orderId: input.orderId ?? null,
+			projectId: input.projectId ?? null,
 			createdAt: now,
 			expiresAt: now + ttl,
 			paidAt: null,

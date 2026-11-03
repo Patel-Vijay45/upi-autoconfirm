@@ -14,6 +14,7 @@ import { checkoutView, presentPublicStatus } from './present.ts';
 import { locationObjectName } from './location-do.ts';
 import { settingsFromJson } from './settings.ts';
 import { alertIfCounterOffline } from './alerts.ts';
+import { inProject } from './projects.ts';
 import { PAGE_JS, WIDGET_JS } from './generated/checkout-assets.ts';
 
 const ID = /^pi_[a-z2-7]{20}$/;
@@ -137,7 +138,7 @@ export function registerCheckout(app: Hono<AnyEnv>) {
 
 	const loadPublic = async (c: Context<AnyEnv>, auth: Awaited<ReturnType<typeof authKey>>) => {
 		const row = await getIntent(c.env.DB, auth.merchantId, c.req.param('id') ?? '');
-		if (!row || (row.livemode === 1) !== auth.livemode) throw notFound('payment intent');
+		if (!row || (row.livemode === 1) !== auth.livemode || !inProject(auth, row.project_id)) throw notFound('payment intent');
 		const loc = await getLocation(c.env.DB, auth.merchantId, row.location_id);
 		if (!loc) throw notFound('payment intent');
 		return { row, loc };

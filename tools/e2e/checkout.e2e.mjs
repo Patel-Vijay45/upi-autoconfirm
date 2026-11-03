@@ -77,7 +77,7 @@ async function main() {
 	const m = await api('POST', '/admin/v1/merchants', { key: ADMIN, body: { name: 'E2E checkout' } });
 	const sk = m.secret_key_test;
 	const pk = m.publishable_key_test;
-	const loc = await api('POST', '/v1/locations', { key: sk, body: { name: 'Counter 1', upi_vpa: 'shop@ybl', upi_payee_name: 'My Shop' } });
+	const loc = await api('POST', '/v1/locations', { key: sk, body: { name: 'Counter 1', upi_vpa: `shop${Date.now().toString(36)}@ybl`, upi_payee_name: 'My Shop' } });
 	const pc = await api('POST', `/v1/locations/${loc.id}/pairing_codes`, { key: sk });
 	const device = await api('POST', '/device/v1/enroll', { body: { pairing_code: pc.code } });
 	const newIntent = (extra = {}) =>

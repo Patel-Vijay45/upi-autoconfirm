@@ -69,7 +69,7 @@ Format: **Decision** — why — consequences.
 18. **Owners and admins need an authenticator code; there's no email sending.**
     Email needs a paid service. One-time invite links (72 h) replace "email me a password". Password reset = re-invite.
 
-19. **An operator token (`ADMIN_TOKEN`) creates shops, via `/operator` or `tools/admin.mjs`.**
+19. **An operator token (`ADMIN_TOKEN`) creates shops, via `/operator` or `tools/admin.mjs`.** (Later: the `/operator` page is hidden unless `OPERATOR_PAGE=on`, switched with a GitHub variable + Deploy, so outsiders can't even see it.)
     There's no self-serve signup yet. The page works from a phone; wrong tokens are throttled.
 
 ## Android
@@ -126,3 +126,11 @@ Format: **Decision** — why — consequences.
     - The privacy policy is a public dashboard page, and its retention periods are enforced by a daily clean-up job, so the policy stays true.
     - Release builds are signed in CI from upload-key secrets and land in a draft GitHub release (only the owner sees it). Google holds the app-signing key (Play App Signing).
     - Step-by-step answers: PLAY-STORE.md.
+
+32. **Several websites on one UPI ID are projects inside one merchant; a UPI ID belongs to one merchant.**
+    The owner reuses one UPI ID across many projects. Separate merchants on one UPI ID were unsafe: each location engine hands out amounts on its own, so one payment could pay orders in two merchants, and a phone pairs to only one merchant. One merchant was safe but mixed every project's webhooks and reports.
+    - Unique amounts stay per location (UPI ID), shared by all projects, so the matching rules and invariants are unchanged. The engine only carries `projectId` along.
+    - Project keys are limited to their project's payments, webhooks and events, with their own idempotency space; shop-level things (counters, phones, inbox, settings) stay with the dashboard and merchant-wide keys.
+    - Phone online/offline events go to every project's endpoint (shared phone); unmatched money stays shop-level.
+    - `POST /v1/locations` refuses a UPI ID another merchant already uses (`upi_id_in_use_elsewhere`).
+

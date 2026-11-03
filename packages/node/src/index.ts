@@ -19,6 +19,8 @@ export interface PaymentIntent {
 	display_amount: string;
 	currency: 'INR';
 	order_id: string | null;
+	/** The merchant's project (website/app), when the shop has several on one UPI ID. */
+	project_id: string | null;
 	description: string | null;
 	location_id: string;
 	customer: { name: string | null; phone: string | null } | null;
@@ -70,6 +72,8 @@ export interface CreatePaymentIntentParams {
 	amount: number;
 	location_id?: string;
 	order_id?: string;
+	/** Only with a shop-wide key; a project's key always uses its own project. */
+	project_id?: string;
 	description?: string;
 	customer?: { name?: string; phone?: string };
 	/** Seconds (default 900). */

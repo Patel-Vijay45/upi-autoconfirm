@@ -71,6 +71,69 @@ describe('invites and login', () => {
 		expect(r.status).toBe(429);
 	});
 
+	it('email case variants share one lock (no bypass with OWNER@ vs owner@)', async () => {
+		const keys = await newMerchant();
+		const e = email('staff');
+		await userFor(keys.merchantId, e, 'staff');
+		const variants = [e, e.toUpperCase(), ` ${e}`, e.replace(/^./, (ch) => ch.toUpperCase()), e.toUpperCase()];
+		for (const v of variants) expect((await call('POST', '/dashboard/v1/login', { body: { email: v, password: 'nope nope nope' } })).status).toBe(401);
+		expect((await call('POST', '/dashboard/v1/login', { body: { email: e, password: PASSWORD } })).status).toBe(429);
+	});
+
+	it('one authenticator code logs in once, even when two logins arrive at the same moment', async () => {
+		const keys = await newMerchant();
+		const e = email('admin');
+		const u = await userFor(keys.merchantId, e, 'admin');
+		const otp = await totpAt(u.secret, totpStep(Date.now()) + 1);
+		const both = await Promise.all([0, 1].map(() => call('POST', '/dashboard/v1/login', { body: { email: e, password: PASSWORD, otp } })));
+		expect(both.map((r) => r.status).sort()).toEqual([200, 401]);
+	});
+
+	it('forgot password / lost authenticator: re-invite resets the login and ends old sessions', async () => {
+		const keys = await newMerchant();
+		const owner = await userFor(keys.merchantId, email('owner'), 'owner');
+		const e = email('admin');
+		const admin = await userFor(keys.merchantId, e, 'admin');
+		const old = await call('GET', '/dashboard/v1/me', as(admin.token));
+		expect(old.status).toBe(200);
+		// Two re-invites: only the newest link works. The role stays admin even if a different one is asked for.
+		const first = await call('POST', '/v1/users/invites', { ...as(owner.token), body: { email: e, role: 'staff' } });
+		const second = await call('POST', '/v1/users/invites', { ...as(owner.token), body: { email: e, role: 'staff' } });
+		expect(second.status).toBe(201);
+		expect(second.json.role).toBe('admin');
+		expect((await call('GET', `/dashboard/v1/invites/${first.json.token}`)).status).toBe(404);
+		// Until the new link is used, the old login still works.
+		expect((await call('GET', '/dashboard/v1/me', as(admin.token))).status).toBe(200);
+		const info = await call('GET', `/dashboard/v1/invites/${second.json.token}`);
+		const newSecret: string = info.json.totp.secret;
+		const done = await call('POST', `/dashboard/v1/invites/${second.json.token}`, { body: { password: 'brand new password 2', otp: await totpAt(newSecret, totpStep(Date.now())) } });
+		expect(done.status).toBe(201);
+		expect((await call('GET', '/dashboard/v1/me', as(admin.token))).status).toBe(401); // old session ended
+		expect((await call('POST', '/dashboard/v1/login', { body: { email: e, password: PASSWORD, otp: await totpAt(admin.secret, totpStep(Date.now()) + 1) } })).status).toBe(401); // old password gone
+		const fresh = await call('POST', '/dashboard/v1/login', { body: { email: e, password: 'brand new password 2', otp: await totpAt(newSecret, totpStep(Date.now()) + 1) } });
+		expect(fresh.status).toBe(200);
+		expect(fresh.json.user.role).toBe('admin');
+	});
+
+	it("an admin can't reset an owner; an owner and the operator can; a deactivated user comes back", async () => {
+		const keys = await newMerchant();
+		const oe = email('owner');
+		const owner = await userFor(keys.merchantId, oe, 'owner');
+		const admin = await userFor(keys.merchantId, email('admin'), 'admin');
+		const takeover = await call('POST', '/v1/users/invites', { ...as(admin.token), body: { email: oe, role: 'admin' } });
+		expect(takeover.status).toBe(403);
+		expect((await call('POST', `/admin/v1/merchants/${keys.merchantId}/invites`, { key: ADMIN, body: { email: oe, role: 'owner' } })).status).toBe(201);
+		// Deactivate staff, then re-invite: they can log in again with the new password.
+		const se = email('staff');
+		const staff = await userFor(keys.merchantId, se, 'staff');
+		await call('POST', `/v1/users/${staff.userId}/deactivate`, as(owner.token));
+		expect((await call('POST', '/dashboard/v1/login', { body: { email: se, password: PASSWORD } })).status).toBe(401);
+		const back = await call('POST', '/v1/users/invites', { ...as(admin.token), body: { email: se, role: 'staff' } });
+		expect(back.status).toBe(201);
+		expect((await call('POST', `/dashboard/v1/invites/${back.json.token}`, { body: { password: 'welcome back 123' } })).status).toBe(201);
+		expect((await call('POST', '/dashboard/v1/login', { body: { email: se, password: 'welcome back 123' } })).status).toBe(200);
+	});
+
 	it('staff can log in with a password only (no MFA required)', async () => {
 		const keys = await newMerchant();
 		const e = email('staff');
@@ -216,7 +279,7 @@ describe('dashboard features', () => {
 		const res = await (await import('../src/app.ts')).app.request('/v1/reports/payments.csv', { headers: { authorization: `Bearer ${keys.sk}` } }, env);
 		expect(res.headers.get('content-type')).toContain('text/csv');
 		const text = await res.text();
-		expect(text.split('\r\n')[0]).toBe('payment_id,order_id,status,amount_inr,pay_amount_inr,received_inr,created_ist,paid_ist,source,late,amount_mismatch,location');
+		expect(text.split('\r\n')[0]).toBe('payment_id,order_id,status,amount_inr,pay_amount_inr,received_inr,created_ist,paid_ist,source,late,amount_mismatch,location,project');
 		expect(text).toContain(`${p1.id},"'=HYPERLINK(""x"")",paid,930.00,${p1.display_amount},${p1.display_amount}`);
 		expect((await call('GET', '/v1/reports/summary?from=2026-01-01&to=2026-12-31', { key: keys.sk })).json.error.code).toBe('range_too_large');
 	});

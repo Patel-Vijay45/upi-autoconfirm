@@ -8,7 +8,12 @@ AutoConfirm is a **standalone, reusable service**. Any number of projects (onlin
 - ✅ First real phone test: the Android app paired. Google Pay's "paid you ₹1.00" notification was captured and turned into the live rules (`rules/parser-rules.json`).
 - ▶ **Now:** the real ₹1 end-to-end test (dashboard **New payment** → pay with Google Pay → **Paid ✓**). Then PhonePe/Paytm samples.
 - ✅ Play Store ready: disclosure, privacy page, demo mode, signed release workflow, store graphics, data retention job. Steps: [PLAY-STORE.md](PLAY-STORE.md).
-- ▶ **Next:** Play internal testing → closed test (12 testers × 14 days) → production. Then Step 5.
+- ⏸ **Play Store publishing: parked by the owner (2026-11-02), to do later.** Everything in the repo is ready. To resume, follow [PLAY-STORE.md](PLAY-STORE.md) from step 1.
+  - Still to do: Play developer account; upload key + GitHub secrets; `SUPPORT_EMAIL` / `OPERATOR_NAME` / `PRIVACY_POLICY_URL` variables.
+  - Then: Deploy → Android release → Play Console → internal test → closed test (12 testers × 14 days) → production.
+  - Until then, shops install the APK directly (USER-MANUAL D2).
+- ✅ Projects: several websites/apps on one UPI ID, each with its own keys and webhooks; a UPI ID belongs to one shop account.
+- ▶ **Next:** pilot on a real project (Step 5 features as needed).
 
 ## Step 1: Core service (API + matching engine) ✅ built
 **Not done yet (small follow-ups):**

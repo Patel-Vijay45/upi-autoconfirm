@@ -36,7 +36,15 @@ Requests, idempotency header, error mapping, retries only for safe calls, webhoo
 ### API (`apps/api/test`, in workerd)
 - `api.test.ts`: payment intents (idempotency, validation, parallel creates), matching through the API, review flow, test/live separation, device security (bad signature, replayed nonce, clock skew, revoked phone, single-use pairing), parser rules endpoint, webhook delivery and retries, payer names, **cross-tenant checks for every endpoint**.
 - `checkout.test.ts`: hosted page (amount, links, QR, strict CSP, no customer data, en/hi/gu), status/claim, **live WebSocket push on payment**, widget endpoints, CORS, tenancy.
-- `dashboard.test.ts`: invites + TOTP setup, login (wrong password, OTP required, OTP replay, lockout), operator-token throttling, roles, keys shown once, phones, settings changing matching, inbox suggestions, reports + CSV (formula-injection safe), webhooks/events, audit log, **cross-tenant checks with sessions and keys**.
+- `attack.test.ts` (**races and abuse**; run it several times when touching the engine or the DO):
+  - 100 payments for one amount at once (99 unique amounts, then `slots_exhausted`); one Idempotency-Key sent 10 times at once (one payment);
+  - one alert uploaded 20 times at once, and two phones × two channels at once (paid once, one `payment_intent.paid` event);
+  - "mark paid" vs the phone alert, cancel vs the alert, two inbox payments matched to one order (never applied twice);
+  - replayed / tampered / foreign-signed phone requests, removed phones; extreme phone clocks;
+  - junk input (floats, negatives, huge, wrong types, bad JSON, 20 KB bodies) → always 4xx, never 500;
+  - another shop probing every route with this shop's ids.
+- `projects.test.ts`, `alerts.test.ts`, `push.test.ts`, `retention.test.ts`: projects isolation and webhook routing, phone-offline alerts, push encryption/delivery, data clean-up.
+- `dashboard.test.ts`: invites + TOTP setup, login (wrong password, OTP required, OTP replay, OTP used twice at the same moment, lockout incl. email case variants), account recovery by re-invite (owners only by owners/the operator; old password, authenticator and sessions end), operator-token throttling, roles, keys shown once, phones, settings changing matching, inbox suggestions, reports + CSV (formula-injection safe), webhooks/events, audit log, **cross-tenant checks with sessions and keys**.
 
 ### Checkout assets
 `npm run check -w @autoconfirm/checkout` fails if `apps/api/src/generated/checkout-assets.ts` is stale or `checkout.js` is over 15 KB gzipped.
@@ -81,5 +89,14 @@ Payment apps to receive with: Google Pay ✓ (verified), PhonePe, Paytm, BharatP
 - [ ] Charger and power bank at the counter; mobile data plus Wi-Fi backup.
 
 ## 5. Security tests
+
+**Review log.**
+- 2026-11-03: review of the engine, the location DO and its outbox, payment/inbox/undo routes, device auth and pairing, logins, invites, money parsing and IDs. Fixed:
+  - re-invites (forgot password, lost authenticator, deactivated user) were refused;
+  - one TOTP code could log in twice when two logins arrived at the same moment.
+
+  Checked and fine: the login lock already folds email case.
+- Mutation checks: disabling the DO idempotency check, the webhook project filter, the project-key scope or the atomic TOTP claim each makes a test fail.
+
 - Automated: wrong key kinds, cross-tenant ids (404), signed-for-another-device payloads, replayed signals and nonces, bodies > 16 KB (413), login and operator brute force (429), CSV formula injection, CSP headers.
 - Manual before public launch: OWASP ASVS L1 on the dashboard and API; dependency audit (`npm audit`); GitHub secret scanning.

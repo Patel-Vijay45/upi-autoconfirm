@@ -9,6 +9,8 @@ export const load: PageServerLoad = async (event) => {
 	const q = new URLSearchParams();
 	if (DATE.test(from)) q.set('from', from);
 	if (DATE.test(to)) q.set('to', to);
-	const report = await get(event, `/v1/reports/summary?${q}`);
-	return { report, q: q.toString() };
+	const project = event.url.searchParams.get('project_id') ?? '';
+	if (project) q.set('project_id', project);
+	const [report, projects] = await Promise.all([get(event, `/v1/reports/summary?${q}`), get(event, '/v1/projects')]);
+	return { report, q: q.toString(), project, projects: projects.data as { id: string; name: string }[] };
 };

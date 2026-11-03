@@ -27,11 +27,26 @@ Send the key as a header: `Authorization: Bearer sk_live_xxx`
 
 ## 2a. Locations and phones
 - `POST /v1/locations` with `{"name": "Counter 1", "upi_vpa": "shop@ybl", "upi_payee_name": "My Shop"}`. Each location is one UPI ID with its own phone(s). A UPI ID can belong to only one active location per merchant (`409 upi_id_in_use`); to watch it from more phones, pair more phones to that location.
+  - A UPI ID also belongs to **one merchant** (`409 upi_id_in_use_elsewhere`). Two merchants on one UPI ID would each hand out amounts, so one payment could pay orders in both. For several websites on one UPI ID, use projects (§2b).
 - `GET /v1/locations`
 - `POST /v1/locations/:id/pairing_codes` returns `{code, pairing_link, expires_at}` (valid 10 min, single use).
   - Show `pairing_link` (`autoconfirm://pair?api=…&code=pc_…`) as a QR. The phone's camera opens the app, which sends the code to `/device/v1/enroll`.
   - The phone gets the key's mode (test or live). Set `PUBLIC_API_URL` if the API is reached through a different address than the request came in on.
 - A location needs at least one paired phone before it can take payments (`422 location_not_ready`).
+
+## 2b. Projects (several websites or apps on one UPI ID)
+A project is a website or app inside a merchant. All projects share the merchant's counters, UPI ID and phone, so unique amounts never clash. Each project has its own API keys and webhook endpoints.
+- `GET /v1/projects`, `POST /v1/projects {name}`, `POST /v1/projects/:id {name?, active?}` (dashboard owner/admin/developer or a merchant-wide secret key; at most 50).
+- **Project keys:** create a key with `POST /v1/api_keys {kind, project_id}` (dashboard). A project's key:
+  - creates payments in its project (`project_id` is set automatically) and lists, reads, cancels and marks paid only its own project's payments (others are `404`);
+  - creates and sees only its own webhook endpoints, deliveries and events;
+  - has its own `Idempotency-Key` space (two websites may both send `order-1`);
+  - can read `GET /v1/locations`, but anything shop-level (counters, pairing, phones, inbox signals, reports, settings, projects, assigning inbox payments) is `403 project_key_scope`;
+  - stops working (`401`) while its project is paused.
+  - A publishable project key shows only its project's payments on checkout.
+- A merchant-wide secret key may set `project_id` when creating a payment or a webhook endpoint, and filter `GET /v1/payment_intents?project_id=`, `GET /v1/events?project_id=`, `GET /v1/reports/summary?project_id=` and the CSV.
+- Payment objects (API and webhooks) carry `project_id` (`null` = no project).
+- **Webhook routing:** a merchant-wide endpoint gets every event. A project's endpoint gets its own project's `payment_intent.*` (and `signal.review_required` for its orders) plus `device.offline` / `device.online` (the phone is shared). It never gets another project's payments or unmatched shop money (`signal.unmatched`).
 
 ## 3. Payment intents
 

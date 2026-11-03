@@ -4,7 +4,7 @@ import { verifyWebhook } from '@autoconfirm/core';
 import worker from '../src/index.ts';
 import { app, shortPayer } from '../src/app.ts';
 import { locationObjectName } from '../src/location-do.ts';
-import { call, createIntent, deviceCall, newLocation, newMerchant, pairDevice, sendSignal, setup } from './helpers.ts';
+import { call, createIntent, deviceCall, newLocation, newMerchant, pairDevice, sendSignal, setup, uniqueVpa } from './helpers.ts';
 
 describe('payment intents', () => {
 	it('creates an intent with a unique paise amount and UPI links', async () => {
@@ -17,7 +17,7 @@ describe('payment intents', () => {
 		expect(r.json.unique_amount).toBeLessThanOrEqual(93099);
 		expect(r.json.display_amount).toBe((r.json.unique_amount / 100).toFixed(2));
 		expect(r.json.upi.uri).toContain(`am=${r.json.display_amount}`);
-		expect(r.json.upi.uri).toContain('pa=shop@ybl');
+		expect(r.json.upi.uri).toMatch(/pa=shop[a-z0-9]+@ybl/);
 		expect(r.json.upi.uri).toContain(`tr=${r.json.id}`);
 		expect(r.json.checkout_url).toBe(`https://pay.example.com/p/${r.json.id}`);
 	});
@@ -254,16 +254,19 @@ describe('device security', () => {
 		expect(row!.status).toBe('revoked');
 	});
 
-	it('one UPI ID can only be one counter per merchant', async () => {
+	it('one UPI ID belongs to one counter of one merchant', async () => {
 		const keys = await newMerchant();
-		await newLocation(keys.sk);
-		const dup = await call('POST', '/v1/locations', { key: keys.sk, body: { name: 'Counter 2', upi_vpa: 'SHOP@ybl', upi_payee_name: 'My Shop' } });
+		const vpa = uniqueVpa();
+		await newLocation(keys.sk, 'Counter 1', vpa);
+		const dup = await call('POST', '/v1/locations', { key: keys.sk, body: { name: 'Counter 2', upi_vpa: vpa.toUpperCase(), upi_payee_name: 'My Shop' } });
 		expect(dup.status).toBe(409);
 		expect(dup.json.error.code).toBe('upi_id_in_use');
-		expect((await call('POST', '/v1/locations', { key: keys.sk, body: { name: 'Counter 2', upi_vpa: 'shop2@ybl', upi_payee_name: 'My Shop' } })).status).toBe(201);
-		// Another merchant is not affected.
+		expect((await call('POST', '/v1/locations', { key: keys.sk, body: { name: 'Counter 2', upi_vpa: uniqueVpa(), upi_payee_name: 'My Shop' } })).status).toBe(201);
+		// Another merchant can't use it either: both would hand out the same amounts and one payment could pay both.
 		const other = await newMerchant();
-		expect((await call('POST', '/v1/locations', { key: other.sk, body: { name: 'C', upi_vpa: 'shop@ybl', upi_payee_name: 'X' } })).status).toBe(201);
+		const elsewhere = await call('POST', '/v1/locations', { key: other.sk, body: { name: 'C', upi_vpa: vpa, upi_payee_name: 'X' } });
+		expect(elsewhere.status).toBe(409);
+		expect(elsewhere.json.error.code).toBe('upi_id_in_use_elsewhere');
 	});
 
 	it('a pairing code works once', async () => {

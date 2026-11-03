@@ -48,6 +48,7 @@ export interface IntentRow {
 	return_url: string | null;
 	metadata: string;
 	idempotency_key: string | null;
+	project_id: string | null;
 	created_at: number;
 	expires_at: number;
 	customer_claimed_at: number | null;
@@ -115,6 +116,8 @@ export interface StoredEvent {
 	/** Full event JSON, exactly as delivered to webhooks. */
 	payload: string;
 	createdAt: number;
+	/** The project the event belongs to (payments of a project); null = merchant-wide (phones, unmatched money). */
+	projectId?: string | null;
 }
 
 // ---------- reads ----------
@@ -146,8 +149,8 @@ export function insertIntentStmt(db: D1Database, i: Intent, x: NewIntentExtras):
 			`INSERT OR IGNORE INTO payment_intents
 			 (id, merchant_id, location_id, livemode, status, amount, unique_amount, order_id, description,
 			  customer_name, customer_phone, return_url, metadata, idempotency_key, created_at, expires_at, late,
-			  amount_mismatch, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+			  amount_mismatch, updated_at, project_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
 		)
 		.bind(
 			i.id,
@@ -167,6 +170,7 @@ export function insertIntentStmt(db: D1Database, i: Intent, x: NewIntentExtras):
 			i.createdAt,
 			i.expiresAt,
 			i.updatedAt,
+			i.projectId ?? null,
 		);
 }
 
@@ -232,8 +236,8 @@ export function upsertSignalStmts(db: D1Database, merchantId: string, locationId
 
 export function insertEventStmt(db: D1Database, e: StoredEvent): D1PreparedStatement {
 	return db
-		.prepare('INSERT OR IGNORE INTO events (id, merchant_id, livemode, type, object_id, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-		.bind(e.id, e.merchantId, e.livemode ? 1 : 0, e.type, e.objectId, e.payload, e.createdAt);
+		.prepare('INSERT OR IGNORE INTO events (id, merchant_id, livemode, type, object_id, payload, created_at, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+		.bind(e.id, e.merchantId, e.livemode ? 1 : 0, e.type, e.objectId, e.payload, e.createdAt, e.projectId ?? null);
 }
 
 export function insertAuditStmt(db: D1Database, a: AuditEntry): D1PreparedStatement {
