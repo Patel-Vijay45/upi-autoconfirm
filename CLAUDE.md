@@ -72,8 +72,8 @@ Read [README.md](README.md), then [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (re
 - Install: `npm install`
 - Dev: `npm run dev` (wrangler dev; needs `apps/api/.dev.vars` and `npx wrangler d1 migrations apply autoconfirm --local` in `apps/api`)
 - Tests: `npm test` (core, node client, checkout asset check, API tests in the Workers runtime). Typecheck: `npm run typecheck`
-- Dashboard dev: `cd apps/dashboard && API_URL=http://127.0.0.1:8787 npx vite dev` (port 5173). Type check: `npm run check -w @autoconfirm/dashboard`
-- Browser e2e: start the API (`wrangler dev`) and the dashboard, then `npm run test:e2e` (Playwright Chromium). Dashboard e2e uses E2E_DASH (default http://127.0.0.1:5173).
+- Dashboard dev: `cd apps/dashboard && API_URL=http://127.0.0.1:8787 OPERATOR_PAGE=on npx vite dev` (port 5173; `/operator` is hidden without `OPERATOR_PAGE=on`). Type check: `npm run check -w @autoconfirm/dashboard`
+- Browser e2e: start the API (`wrangler dev`) and the dashboard (with `OPERATOR_PAGE=on`), then `npm run test:e2e` (Playwright Chromium). Dashboard e2e uses E2E_DASH (default http://127.0.0.1:5173).
 - Device simulator: `node tools/device-sim.mjs pair --code pc_… --api http://localhost:8787`, then `node tools/device-sim.mjs signal --amount 930.07`
 - Android: `cd apps/android && ./gradlew testDebugUnitTest assembleDebug` (needs JDK 17+ and Android SDK 36)
 - Play release: Actions → "Android release" builds the signed `.aab` into a draft GitHub release. Guide: docs/PLAY-STORE.md. If the app starts reading or sending anything new, update `DISCLOSURE_TEXT`, the `/privacy` page and the Data safety answers together.

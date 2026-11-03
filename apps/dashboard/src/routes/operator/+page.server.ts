@@ -1,9 +1,24 @@
 // Operator page: create a shop (merchant) and its owner's setup link, or invite a user to a shop.
 // The operator token is sent straight to the API for this one request; it is never stored or echoed back.
-import { fail } from '@sveltejs/kit';
-import type { Actions } from './$types';
+import { error, fail, type RequestEvent } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
+import type { Actions, PageServerLoad } from './$types';
 import { apiRaw } from '$lib/server/api.ts';
 import { form } from '$lib/server/actions.ts';
+
+/**
+ * The page is hidden ("not found") unless OPERATOR_PAGE=on. Turn it on only while creating shops
+ * (GitHub variable OPERATOR_PAGE → Deploy). The operator token is still required either way.
+ */
+function requireEnabled(event: RequestEvent) {
+	const v = ((event.platform?.env as Record<string, string | undefined> | undefined)?.OPERATOR_PAGE ?? env.OPERATOR_PAGE ?? '').trim().toLowerCase();
+	if (v !== 'on') error(404, 'Not found');
+}
+
+export const load: PageServerLoad = async (event) => {
+	requireEnabled(event);
+	return {};
+};
 
 async function operator(event: Parameters<Actions[string]>[0], token: string, path: string, body: unknown) {
 	const res = await apiRaw(event, 'POST', path, body, { authorization: `Bearer ${token}` });
@@ -16,6 +31,7 @@ async function operator(event: Parameters<Actions[string]>[0], token: string, pa
 
 export const actions: Actions = {
 	createShop: async (event) => {
+		requireEnabled(event);
 		const f = await form(event);
 		const name = (f.name ?? '').trim();
 		const email = (f.email ?? '').trim();
@@ -38,6 +54,7 @@ export const actions: Actions = {
 		};
 	},
 	invite: async (event) => {
+		requireEnabled(event);
 		const f = await form(event);
 		const merchant = (f.merchant ?? '').trim();
 		const email = (f.email ?? '').trim();

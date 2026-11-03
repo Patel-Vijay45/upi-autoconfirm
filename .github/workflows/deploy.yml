@@ -46,6 +46,7 @@ jobs:
           WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
           AUTOCONFIRM_SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
           AUTOCONFIRM_OPERATOR_NAME: ${{ vars.OPERATOR_NAME }}
+          AUTOCONFIRM_OPERATOR_PAGE: ${{ vars.OPERATOR_PAGE }}
 
   production:
     needs: staging
@@ -71,3 +72,4 @@ jobs:
           WORKERS_SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
           AUTOCONFIRM_SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
           AUTOCONFIRM_OPERATOR_NAME: ${{ vars.OPERATOR_NAME }}
+          AUTOCONFIRM_OPERATOR_PAGE: ${{ vars.OPERATOR_PAGE }}

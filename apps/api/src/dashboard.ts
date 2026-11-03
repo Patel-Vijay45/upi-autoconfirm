@@ -122,17 +122,27 @@ async function recordFailure(env: Env, keys: string[], now: number) {
 	}
 }
 
-async function createInvite(env: Env, merchantId: string, email: string, role: (typeof USER_ROLES)[number]) {
+/**
+ * Invite a new user, or re-invite an existing one of the same shop. A re-invite is how a forgotten password,
+ * a lost authenticator or a deactivated account is fixed: the new setup link replaces the password and
+ * authenticator (and reactivates) when it's used. Until then the old login keeps working.
+ * - Only an owner (or the operator) can re-invite an owner, so an admin can't take over an owner's account.
+ * - A re-invite keeps a set-up user's role; only a never-finished invite takes the new role.
+ */
+async function createInvite(env: Env, merchantId: string, email: string, role: (typeof USER_ROLES)[number], inviter: Role | 'operator') {
 	const now = Date.now();
-	const existing = await env.DB.prepare('SELECT id, merchant_id, password_hash FROM users WHERE email = ? COLLATE NOCASE')
+	const existing = await env.DB.prepare('SELECT id, merchant_id, role, password_hash FROM users WHERE email = ? COLLATE NOCASE')
 		.bind(email)
-		.first<{ id: string; merchant_id: string; password_hash: string | null }>();
+		.first<{ id: string; merchant_id: string; role: Role; password_hash: string | null }>();
 	let userId: string;
 	if (existing) {
-		// Re-inviting someone who never finished setup is fine; anything else is a conflict.
-		if (existing.merchant_id !== merchantId || existing.password_hash !== null) throw new ApiError(409, 'conflict', 'email_in_use', 'this email already has an account');
+		if (existing.merchant_id !== merchantId) throw new ApiError(409, 'conflict', 'email_in_use', 'this email already has an account');
+		if (existing.role === 'owner' && inviter !== 'owner' && inviter !== 'operator') throw new ApiError(403, 'permission', 'forbidden', 'only an owner can reset an owner');
 		userId = existing.id;
-		await env.DB.prepare('UPDATE users SET role = ? WHERE id = ? AND merchant_id = ?').bind(role, userId, merchantId).run();
+		if (existing.password_hash === null) await env.DB.prepare('UPDATE users SET role = ? WHERE id = ? AND merchant_id = ?').bind(role, userId, merchantId).run();
+		else role = existing.role as (typeof USER_ROLES)[number];
+		// Only the newest link works.
+		await env.DB.prepare('UPDATE user_invites SET used_at = ? WHERE user_id = ? AND merchant_id = ? AND used_at IS NULL').bind(now, userId, merchantId).run();
 	} else {
 		userId = randomId('usr');
 		await env.DB.prepare("INSERT INTO users (id, merchant_id, email, password_hash, role, mfa_secret, active, created_at) VALUES (?, ?, ?, NULL, ?, NULL, 0, ?)")
@@ -243,7 +253,12 @@ export function registerDashboard(app: Hono<AppEnv>) {
 				await recordFailure(c.env, keys.map((k) => k.key), now);
 				throw new ApiError(401, 'authentication', 'invalid_otp', 'that code is wrong or was already used', 'otp');
 			}
-			await c.env.DB.prepare('UPDATE users SET mfa_last_step = ? WHERE id = ?').bind(step, user.id).run();
+			// Claim the code atomically: two logins sent at the same moment with one code can't both pass.
+			const claimed = await c.env.DB.prepare('UPDATE users SET mfa_last_step = ? WHERE id = ? AND (mfa_last_step IS NULL OR mfa_last_step < ?)').bind(step, user.id, step).run();
+			if (claimed.meta.changes !== 1) {
+				await recordFailure(c.env, keys.map((k) => k.key), now);
+				throw new ApiError(401, 'authentication', 'invalid_otp', 'that code is wrong or was already used', 'otp');
+			}
 		}
 		await c.env.DB.prepare('DELETE FROM login_throttle WHERE key = ?').bind(keys[0]!.key).run();
 		const session = await createSession(c.env, user.id, user.merchant_id, c);
@@ -301,9 +316,18 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		const now = Date.now();
 		const used = await c.env.DB.prepare('UPDATE user_invites SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?').bind(now, inv.token_hash, now).run();
 		if (used.meta.changes !== 1) throw notFound('invite');
-		await c.env.DB.prepare('UPDATE users SET password_hash = ?, mfa_secret = ?, mfa_last_step = ?, active = 1 WHERE id = ? AND merchant_id = ?')
-			.bind(await passwordHasher(c.env).hash(body.password), step !== null ? inv.mfa_secret_enc : null, step, inv.user_id, inv.merchant_id)
-			.run();
+		const hash = await passwordHasher(c.env).hash(body.password);
+		await c.env.DB.batch([
+			c.env.DB.prepare('UPDATE users SET password_hash = ?, mfa_secret = ?, mfa_last_step = ?, active = 1 WHERE id = ? AND merchant_id = ?').bind(
+				hash,
+				step !== null ? inv.mfa_secret_enc : null,
+				step,
+				inv.user_id,
+				inv.merchant_id,
+			),
+			// A reset (re-invite) logs out every old session of this user.
+			c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND merchant_id = ?').bind(inv.user_id, inv.merchant_id),
+		]);
 		const session = await createSession(c.env, inv.user_id, inv.merchant_id, c);
 		return c.json({ ...session, user: { id: inv.user_id, email: inv.email, role: inv.role }, merchant: { id: inv.merchant_id, name: inv.merchant_name } }, 201);
 	});
@@ -313,7 +337,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		const body = parse(await readBody(c), Invite);
 		const m = await c.env.DB.prepare('SELECT id FROM merchants WHERE id = ?').bind(c.req.param('id')).first();
 		if (!m) throw notFound('merchant');
-		return c.json(await createInvite(c.env, c.req.param('id'), body.email, body.role), 201);
+		return c.json(await createInvite(c.env, c.req.param('id'), body.email, body.role, 'operator'), 201);
 	});
 
 	// ----- team -----
@@ -335,7 +359,7 @@ export function registerDashboard(app: Hono<AppEnv>) {
 		requireRole(auth, 'owner', 'admin');
 		const body = parse(await readBody(c), Invite);
 		if (body.role === 'owner' && auth.role !== 'owner') throw new ApiError(403, 'permission', 'forbidden', 'only an owner can invite another owner');
-		const inv = await createInvite(c.env, auth.merchantId, body.email, body.role);
+		const inv = await createInvite(c.env, auth.merchantId, body.email, body.role, auth.role);
 		await audit(c.env, auth, c, 'user.invite', inv.user_id, { email: body.email, role: body.role });
 		return c.json(inv, 201);
 	});

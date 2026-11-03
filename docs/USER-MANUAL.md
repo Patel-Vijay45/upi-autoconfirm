@@ -41,6 +41,12 @@ Everything runs on Cloudflare's **free plan** (100,000 requests/day; about 2,000
 
 ## B. Create a shop
 
+The `/operator` page is **hidden** ("not found") unless you switch it on, so nobody else can even see it:
+- **Switch on:** GitHub → Settings → Environments → **production** → Variables → `OPERATOR_PAGE` = `on` → Actions → **Deploy** → Run workflow.
+- **Switch off** when you're done: set `OPERATOR_PAGE` to `off` (or delete it) and run **Deploy** again.
+
+Your operator password is still needed even while it's on.
+
 1. Open `https://<dashboard>/operator` (any browser, including a phone).
 2. Enter your **operator password**, the **shop name**, and the **owner's email** (their dashboard login). Tap **Create shop**.
 3. The page shows:
@@ -203,7 +209,8 @@ For developers. Full guide: [INTEGRATION.md](INTEGRATION.md); API reference: [AP
   - **Admin:** everything except inviting owners.
   - **Owner:** everything.
 - **Someone leaves:** Settings → Team → **Deactivate** (logs them out immediately).
-- **Forgot password:** an owner or admin invites them again (password reset isn't built yet). If the only owner is locked out, the operator creates an invite from `/operator` (role owner).
+- **Forgot password or lost authenticator phone:** an owner or admin invites the same email again (Settings → Team) and sends them the new setup link. When they finish it, the old password, authenticator and logins stop working. Their role stays the same. Only an owner (or the operator) can do this for an owner. If the only owner is locked out, the operator creates the invite from `/operator` (switch the page on first, see B).
+- **Someone comes back:** invite their email again; finishing the setup link reactivates them.
 - **Lost or stolen counter phone:** Counters & phones → **Remove** next to the phone (it stops confirming immediately), then change the payment app's PIN.
 - **Leaked API key:** Developers → **Revoke**, create a new one, update your website.
 - **Operator password lost:** create a new one and update `AUTOCONFIRM_ADMIN_TOKEN` in both GitHub environments, then **Run workflow**. This doesn't affect shops, phones or logins.
@@ -228,6 +235,6 @@ For developers. Full guide: [INTEGRATION.md](INTEGRATION.md); API reference: [AP
 | **Pairing failed** | Codes last 10 min and work once: create a new one. Make sure the phone has internet. |
 | **Setup link doesn't work** | It expired (72 h) or was used. Ask for a new invite. |
 | **"Too many failed logins"** | Wait 15 minutes. |
-| **Lost authenticator phone** | Ask an owner/admin (or the operator) to deactivate and re-invite you. |
+| **Lost authenticator phone** | Ask an owner/admin (or, for an owner, the operator) to invite your email again, then finish the new setup link. |
 | **Deploy failed in GitHub Actions** | Open the failed run → read the last red step. Common: wrong/rolled Cloudflare token in GitHub secrets; Cloudflare rate limit (just re-run). |
 | **Cloudflare error 1027** | The free daily request limit is used up; it resets daily. Consider Workers Paid ($5/month) if it happens often. |

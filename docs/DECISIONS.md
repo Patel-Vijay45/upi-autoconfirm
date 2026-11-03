@@ -69,7 +69,7 @@ Format: **Decision** — why — consequences.
 18. **Owners and admins need an authenticator code; there's no email sending.**
     Email needs a paid service. One-time invite links (72 h) replace "email me a password". Password reset = re-invite.
 
-19. **An operator token (`ADMIN_TOKEN`) creates shops, via `/operator` or `tools/admin.mjs`.**
+19. **An operator token (`ADMIN_TOKEN`) creates shops, via `/operator` or `tools/admin.mjs`.** (Later: the `/operator` page is hidden unless `OPERATOR_PAGE=on`, switched with a GitHub variable + Deploy, so outsiders can't even see it.)
     There's no self-serve signup yet. The page works from a phone; wrong tokens are throttled.
 
 ## Android

@@ -306,7 +306,7 @@ curl "http://127.0.0.1:8787/__scheduled?cron=*/5+*+*+*+*"
 ```bash
 cd apps/dashboard && API_URL=http://127.0.0.1:8787 npx vite dev     # http://127.0.0.1:5173
 ```
-Create a shop at `http://127.0.0.1:5173/operator` with your local `ADMIN_TOKEN`.
+Create a shop at `http://127.0.0.1:5173/operator` with your local `ADMIN_TOKEN` (start the dashboard with `OPERATOR_PAGE=on`, otherwise the page is "not found").
 
 **Pretend to be a phone**
 ```bash

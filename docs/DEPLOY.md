@@ -58,6 +58,7 @@ On the first run, the deploy script ([tools/deploy/deploy.mjs](../tools/deploy/d
 - The API Worker gets a cron trigger (every 5 min) for phone-offline alerts. The free plan allows 5 cron triggers per account; staging + production use 2.
 
 ### 6. Your first shop
+First switch the operator page on: set the environment variable `OPERATOR_PAGE` = `on` and run **Deploy** (it's hidden by default; switch it off again afterwards).
 From a phone or computer browser:
 1. Open `https://autoconfirm-dashboard.<subdomain>.workers.dev/operator` (staging: `autoconfirm-dashboard-staging…`).
 2. Enter your operator token, a shop name and the owner's email, then tap **Create shop**.
